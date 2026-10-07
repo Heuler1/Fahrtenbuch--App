@@ -52,8 +52,8 @@ export default function RemindersScreen() {
       const updatedReminders = reminders.map(reminder => 
         reminder.id === id ? {...reminder, active: !reminder.active} : reminder
       );
-      setRemindersState(updatedReminders);
       await setReminders(updatedReminders);
+      setRemindersState(updatedReminders);
     } catch (error) {
       console.error('Error toggling reminder active state:', error);
       Alert.alert('Fehler', 'Beim Ändern des Status ist ein Fehler aufgetreten.');
@@ -80,8 +80,8 @@ export default function RemindersScreen() {
       };
 
       const updatedReminders = [reminderToAdd, ...reminders];
-      setRemindersState(updatedReminders);
       await setReminders(updatedReminders);
+      setRemindersState(updatedReminders);
       
       setShowAddModal(false);
       resetNewReminder();
@@ -112,8 +112,8 @@ export default function RemindersScreen() {
         reminder.id === currentReminder.id ? updatedReminder : reminder
       );
       
-      setRemindersState(updatedReminders);
       await setReminders(updatedReminders);
+      setRemindersState(updatedReminders);
       
       setShowEditModal(false);
       setCurrentReminder(null);
@@ -130,8 +130,8 @@ export default function RemindersScreen() {
     
     try {
       const updatedReminders = reminders.filter(reminder => reminder.id !== currentReminder.id);
-      setRemindersState(updatedReminders);
       await setReminders(updatedReminders);
+      setRemindersState(updatedReminders);
       
       setShowDeleteModal(false);
       setCurrentReminder(null);

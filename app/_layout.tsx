@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SplashScreen } from 'expo-router';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import {
   useFonts,
   Montserrat_400Regular,
@@ -43,6 +43,21 @@ export default function RootLayout() {
       }
     }
   }, [fontsLoaded, fontError]);
+
+  // Refresh native sessions only while the app is in the foreground.
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const updateRefresh = (state: string) => {
+      if (state === 'active') supabase.auth.startAutoRefresh();
+      else supabase.auth.stopAutoRefresh();
+    };
+    updateRefresh(AppState.currentState);
+    const listener = AppState.addEventListener('change', updateRefresh);
+    return () => {
+      listener.remove();
+      supabase.auth.stopAutoRefresh();
+    };
+  }, []);
 
   // Check authentication status
   useEffect(() => {

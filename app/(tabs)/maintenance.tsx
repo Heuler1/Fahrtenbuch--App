@@ -26,7 +26,7 @@ export default function MaintenanceScreen() {
     receiptImage: ''
   });
   
-  const [maintenanceEntries, setMaintenanceEntries] = useState([]);
+  const [maintenanceEntries, setMaintenanceEntriesState] = useState([]);
 
   // Load maintenance entries from storage
   useEffect(() => {
@@ -35,7 +35,7 @@ export default function MaintenanceScreen() {
         setIsLoading(true);
         const entries = await getMaintenanceEntries();
         if (entries) {
-          setMaintenanceEntries(entries);
+          setMaintenanceEntriesState(entries);
         }
       } catch (error) {
         console.error('Error loading maintenance entries:', error);
@@ -85,8 +85,8 @@ export default function MaintenanceScreen() {
 
     try {
       const updatedEntries = [maintenanceEntryToAdd, ...maintenanceEntries];
-      setMaintenanceEntries(updatedEntries);
       await setMaintenanceEntries(updatedEntries);
+      setMaintenanceEntriesState(updatedEntries);
       setShowAddModal(false);
       resetNewMaintenanceEntry();
       Alert.alert('Erfolg', 'Eintrag wurde erfolgreich hinzugefügt.');
@@ -113,8 +113,8 @@ export default function MaintenanceScreen() {
 
     try {
       const updatedEntries = maintenanceEntries.map(entry => entry.id === currentMaintenanceEntry.id ? updatedEntry : entry);
-      setMaintenanceEntries(updatedEntries);
       await setMaintenanceEntries(updatedEntries);
+      setMaintenanceEntriesState(updatedEntries);
       setShowEditModal(false);
       setCurrentMaintenanceEntry(null);
       Alert.alert('Erfolg', 'Eintrag wurde erfolgreich aktualisiert.');
@@ -129,8 +129,8 @@ export default function MaintenanceScreen() {
     
     try {
       const updatedEntries = maintenanceEntries.filter(entry => entry.id !== currentMaintenanceEntry.id);
-      setMaintenanceEntries(updatedEntries);
       await setMaintenanceEntries(updatedEntries);
+      setMaintenanceEntriesState(updatedEntries);
       setShowDeleteModal(false);
       setCurrentMaintenanceEntry(null);
       Alert.alert('Erfolg', 'Eintrag wurde erfolgreich gelöscht.');

@@ -26,7 +26,7 @@ export const getUserProfile = async () => {
     return data;
   } catch (error) {
     console.error('Error fetching user profile:', error);
-    return null;
+    throw error;
   }
 };
 
@@ -40,7 +40,7 @@ export const setUserProfile = async (profile) => {
         name: profile.name || '',
         phone: profile.phone || '',
         image_url: profile.image || '',
-      })
+      }, { onConflict: 'user_id' })
       .select()
       .single();
 
@@ -66,7 +66,7 @@ export const getVehicles = async () => {
     return data || [];
   } catch (error) {
     console.error('Error fetching vehicles:', error);
-    return [];
+    throw error;
   }
 };
 
@@ -75,10 +75,11 @@ export const setVehicles = async (vehicles) => {
     const userId = await getCurrentUserId();
     
     // Delete existing vehicles for this user
-    await supabase
+    const { error: deleteError } = await supabase
       .from('vehicles')
       .delete()
       .eq('user_id', userId);
+    if (deleteError) throw deleteError;
 
     // Insert new vehicles
     if (vehicles && vehicles.length > 0) {
@@ -175,7 +176,7 @@ export const getFuelEntries = async () => {
     return data || [];
   } catch (error) {
     console.error('Error fetching fuel entries:', error);
-    return [];
+    throw error;
   }
 };
 
@@ -184,10 +185,11 @@ export const setFuelEntries = async (entries) => {
     const userId = await getCurrentUserId();
     
     // Delete existing entries for this user
-    await supabase
+    const { error: deleteError } = await supabase
       .from('fuel_entries')
       .delete()
       .eq('user_id', userId);
+    if (deleteError) throw deleteError;
 
     // Insert new entries
     if (entries && entries.length > 0) {
@@ -234,7 +236,7 @@ export const getTrips = async () => {
     return data || [];
   } catch (error) {
     console.error('Error fetching trips:', error);
-    return [];
+    throw error;
   }
 };
 
@@ -243,10 +245,11 @@ export const setTrips = async (trips) => {
     const userId = await getCurrentUserId();
     
     // Delete existing trips for this user
-    await supabase
+    const { error: deleteError } = await supabase
       .from('trips')
       .delete()
       .eq('user_id', userId);
+    if (deleteError) throw deleteError;
 
     // Insert new trips
     if (trips && trips.length > 0) {
@@ -293,7 +296,7 @@ export const getMaintenanceEntries = async () => {
     return data || [];
   } catch (error) {
     console.error('Error fetching maintenance entries:', error);
-    return [];
+    throw error;
   }
 };
 
@@ -302,10 +305,11 @@ export const setMaintenanceEntries = async (entries) => {
     const userId = await getCurrentUserId();
     
     // Delete existing entries for this user
-    await supabase
+    const { error: deleteError } = await supabase
       .from('maintenance_entries')
       .delete()
       .eq('user_id', userId);
+    if (deleteError) throw deleteError;
 
     // Insert new entries
     if (entries && entries.length > 0) {
@@ -352,7 +356,7 @@ export const getReminders = async () => {
     return data || [];
   } catch (error) {
     console.error('Error fetching reminders:', error);
-    return [];
+    throw error;
   }
 };
 
@@ -361,10 +365,11 @@ export const setReminders = async (reminders) => {
     const userId = await getCurrentUserId();
     
     // Delete existing reminders for this user
-    await supabase
+    const { error: deleteError } = await supabase
       .from('reminders')
       .delete()
       .eq('user_id', userId);
+    if (deleteError) throw deleteError;
 
     // Insert new reminders
     if (reminders && reminders.length > 0) {
@@ -402,7 +407,7 @@ export const getCurrentVehicle = async () => {
     return vehicles.find(v => v.is_active) || vehicles[0] || null;
   } catch (error) {
     console.error('Error getting current vehicle:', error);
-    return null;
+    throw error;
   }
 };
 
@@ -412,18 +417,20 @@ export const setCurrentVehicle = async (vehicle) => {
     const userId = await getCurrentUserId();
     
     // Set all vehicles to inactive
-    await supabase
+    const { error: resetError } = await supabase
       .from('vehicles')
       .update({ is_active: false })
       .eq('user_id', userId);
+    if (resetError) throw resetError;
     
     // Set the selected vehicle to active
     if (vehicle && vehicle.id) {
-      await supabase
+      const { error: selectError } = await supabase
         .from('vehicles')
         .update({ is_active: true })
         .eq('id', vehicle.id)
         .eq('user_id', userId);
+      if (selectError) throw selectError;
     }
     
     return true;

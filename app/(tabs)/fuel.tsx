@@ -104,8 +104,8 @@ export default function FuelScreen() {
       };
 
       const updatedEntries = [fuelEntryToAdd, ...fuelEntries];
-      setFuelEntriesState(updatedEntries);
       await setFuelEntries(updatedEntries);
+      setFuelEntriesState(updatedEntries);
       
       setShowAddModal(false);
       resetNewFuelEntry();
@@ -153,8 +153,8 @@ export default function FuelScreen() {
       };
 
       const updatedEntries = fuelEntries.map(entry => entry.id === currentFuelEntry.id ? updatedEntry : entry);
-      setFuelEntriesState(updatedEntries);
       await setFuelEntries(updatedEntries);
+      setFuelEntriesState(updatedEntries);
       
       setShowEditModal(false);
       setCurrentFuelEntry(null);
@@ -171,8 +171,8 @@ export default function FuelScreen() {
     
     try {
       const updatedEntries = fuelEntries.filter(entry => entry.id !== currentFuelEntry.id);
-      setFuelEntriesState(updatedEntries);
       await setFuelEntries(updatedEntries);
+      setFuelEntriesState(updatedEntries);
       
       setShowDeleteModal(false);
       setCurrentFuelEntry(null);

@@ -134,8 +134,8 @@ export default function LogbookScreen() {
       };
 
       const updatedTrips = [tripToAdd, ...trips];
-      setTripsState(updatedTrips);
       await setTrips(updatedTrips);
+      setTripsState(updatedTrips);
       
       setShowAddModal(false);
       resetNewTrip();
@@ -169,8 +169,8 @@ export default function LogbookScreen() {
       };
 
       const updatedTrips = trips.map(trip => trip.id === currentTrip.id ? updatedTrip : trip);
-      setTripsState(updatedTrips);
       await setTrips(updatedTrips);
+      setTripsState(updatedTrips);
       
       setShowEditModal(false);
       setCurrentTrip(null);
@@ -187,8 +187,8 @@ export default function LogbookScreen() {
     
     try {
       const updatedTrips = trips.filter(trip => trip.id !== currentTrip.id);
-      setTripsState(updatedTrips);
       await setTrips(updatedTrips);
+      setTripsState(updatedTrips);
       
       setShowDeleteModal(false);
       setCurrentTrip(null);
@@ -227,11 +227,11 @@ export default function LogbookScreen() {
   const handleExportPDF = async (exportType) => {
     try {
       let tripsToExport = filteredTrips;
-      let exportTitle = 'Alle Fahrten';
+
       
       if (exportType === 'business') {
         tripsToExport = filteredTrips.filter(trip => trip.category === 'Geschäftlich');
-        exportTitle = 'Geschäftsfahrten';
+
       }
       
       const vehicleInfo = currentVehicle ? {
@@ -246,13 +246,13 @@ export default function LogbookScreen() {
       
       const options = {
         vehicleInfo,
-        exportType: exportTitle,
-        dateRange: selectedCategory === 'Alle' ? 'Alle Zeiträume' : selectedCategory
+        exportType,
+        dateRange: 'Alle erfassten Zeiträume'
       };
       
       await exportTripsPdf(tripsToExport, options);
       setShowExportModal(false);
-      Alert.alert('Erfolg', 'Fahrtenbuch wurde erfolgreich exportiert.');
+      Alert.alert('PDF bereit', 'Der Druck- oder Teilen-Dialog wurde geöffnet. Bitte schließen Sie dort das Speichern ab.');
     } catch (error) {
       console.error('Error exporting trips PDF:', error);
       Alert.alert('Fehler', 'Beim Exportieren des Fahrtenbuchs ist ein Fehler aufgetreten.');
