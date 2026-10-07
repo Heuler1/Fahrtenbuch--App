@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, Alert, Platform, Modal, TextInput, ScrollView } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, Alert, Platform, Modal, TextInput, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Plus, Car, Calendar, Fuel, Settings, ChevronRight, MoveVertical as MoreVertical, X, Save, Camera } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { getVehicles, addVehicle } from '../../utils/storage';
+import { validateVehicleForm, vehicleSaveError } from '../../utils/vehicleForm';
 
 export default function VehiclesScreen() {
   const router = useRouter();
@@ -48,7 +49,9 @@ export default function VehiclesScreen() {
   );
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newVehicleImage, setNewVehicleImage] = useState(null);
+  const [saveError, setSaveError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
   const [newVehicle, setNewVehicle] = useState({
     name: '',
     year: '',
@@ -100,52 +103,26 @@ export default function VehiclesScreen() {
   };
 
   const saveNewVehicle = async () => {
-    console.log('saveNewVehicle called');
-    console.log('Current vehicle data:', newVehicle);
-
-    // Validate required fields
-    if (!newVehicle.name || !newVehicle.year || !newVehicle.licensePlate || !newVehicle.mileage) {
-      console.log('Validation failed - missing fields:', {
-        name: newVehicle.name,
-        year: newVehicle.year,
-        licensePlate: newVehicle.licensePlate,
-        mileage: newVehicle.mileage
-      });
-      Alert.alert('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
+    if (savingRef.current) return;
+    setSaveError('');
+    let validated;
+    try {
+      validated = validateVehicleForm(newVehicle);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Bitte die Eingaben prüfen.');
       return;
     }
-
-    // Validate numeric inputs
-    const year = parseInt(newVehicle.year);
-    const mileage = parseInt(newVehicle.mileage);
-    const fuelLevel = parseInt(newVehicle.fuelLevel);
-
-    if (isNaN(year) || year < 1900 || year > new Date().getFullYear()) {
-      Alert.alert('Fehler', 'Bitte geben Sie ein gültiges Baujahr ein.');
-      return;
-    }
-
-    if (isNaN(mileage) || mileage < 0) {
-      Alert.alert('Fehler', 'Bitte geben Sie einen gültigen Kilometerstand ein.');
-      return;
-    }
-
-    if (isNaN(fuelLevel) || fuelLevel < 0 || fuelLevel > 100) {
-      Alert.alert('Fehler', 'Bitte geben Sie einen gültigen Tankfüllstand (0-100%) ein.');
-      return;
-    }
-
-    console.log('Validation passed, adding vehicle...');
-
+    savingRef.current = true;
+    setIsSaving(true);
     try {
       // Create a new vehicle (normalized to UI format, addVehicle handles Supabase conversion)
       const vehicleToAdd = {
-        name: newVehicle.name,
-        year: year,
-        licensePlate: newVehicle.licensePlate,
-        mileage: mileage,
-        nextInspection: newVehicle.nextInspection || '01.01.2026',
-        fuelLevel: fuelLevel,
+        name: validated.name,
+        year: validated.year,
+        licensePlate: validated.licensePlate,
+        mileage: validated.mileage,
+        nextInspection: validated.nextInspection,
+        fuelLevel: validated.fuelLevel,
         isActive: newVehicle.isActive,
         image: newVehicle.image,
         vin: '',
@@ -172,12 +149,12 @@ export default function VehiclesScreen() {
         seasonEnd: '31.10',
       };
 
-      console.log('Vehicle data to add:', vehicleToAdd);
+
 
       // Add vehicle to database
       const savedVehicle = await addVehicle(vehicleToAdd);
 
-      console.log('Vehicle saved successfully:', savedVehicle);
+      if (!savedVehicle?.id) throw new Error('Die Datenbank hat keine Fahrzeug-ID zurückgegeben.');
 
       // Update local state
       const updatedVehicles = [...vehicles, savedVehicle];
@@ -187,20 +164,18 @@ export default function VehiclesScreen() {
       resetNewVehicle();
       setShowAddModal(false);
 
-      Alert.alert('Erfolg', 'Fahrzeug wurde erfolgreich hinzugefügt.');
-
-      // Navigate to the new vehicle's details page
-      setTimeout(() => {
-        navigateToVehicle(savedVehicle.id);
-      }, 500);
+      navigateToVehicle(savedVehicle.id);
     } catch (error) {
       console.error('Error adding vehicle:', error);
-      console.error('Error details:', JSON.stringify(error, null, 2));
-      Alert.alert('Fehler', 'Beim Hinzufügen des Fahrzeugs ist ein Fehler aufgetreten: ' + (error.message || JSON.stringify(error)));
+      setSaveError(vehicleSaveError(error));
+    } finally {
+      savingRef.current = false;
+      setIsSaving(false);
     }
   };
 
   const resetNewVehicle = () => {
+    setSaveError('');
     setNewVehicle({
       name: '',
       year: '',
@@ -332,6 +307,7 @@ export default function VehiclesScreen() {
         transparent={true}
         animationType="slide"
         onRequestClose={() => {
+          if (savingRef.current) return;
           setShowAddModal(false);
           resetNewVehicle();
         }}
@@ -342,7 +318,9 @@ export default function VehiclesScreen() {
               <Text style={styles.modalTitle}>Neues Fahrzeug hinzufügen</Text>
               <TouchableOpacity 
                 style={styles.closeButton}
+                disabled={isSaving}
                 onPress={() => {
+                  if (savingRef.current) return;
                   setShowAddModal(false);
                   resetNewVehicle();
                 }}
@@ -459,16 +437,22 @@ export default function VehiclesScreen() {
                 </View>
               </View>
 
+              {saveError ? (
+                <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.saveError}>
+                  <Text style={styles.saveErrorText}>{saveError}</Text>
+                </View>
+              ) : null}
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Fahrzeug speichern"
+                accessibilityState={{ disabled: isSaving, busy: isSaving }}
                 activeOpacity={0.7}
-                style={styles.saveButton}
-                onPress={() => {
-                  console.log('Save button pressed');
-                  saveNewVehicle();
-                }}
+                disabled={isSaving}
+                style={[styles.saveButton, isSaving && { opacity: 0.6 }]}
+                onPress={saveNewVehicle}
               >
-                <Save color="#FFF" size={20} />
-                <Text style={styles.saveButtonText}>Fahrzeug speichern</Text>
+                {isSaving ? <ActivityIndicator color="#FFF" /> : <Save color="#FFF" size={20} />}
+                <Text style={styles.saveButtonText}>{isSaving ? 'Speichert …' : 'Fahrzeug speichern'}</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -479,6 +463,8 @@ export default function VehiclesScreen() {
 }
 
 const styles = StyleSheet.create({
+  saveError: { padding: 12, marginBottom: 12, borderRadius: 8, backgroundColor: '#FDECEC', borderWidth: 1, borderColor: '#C62828' },
+  saveErrorText: { color: '#9B1C1C', fontSize: 14 },
   container: {
     flex: 1,
     backgroundColor: '#F9F9F9',

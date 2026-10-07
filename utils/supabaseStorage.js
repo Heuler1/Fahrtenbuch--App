@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { toSupabaseVehicle } from './vehicleUtils';
 
 // Helper function to get current user ID
 const getCurrentUserId = async () => {
@@ -107,7 +108,6 @@ export const setVehicles = async (vehicles) => {
 export const addVehicle = async (vehicle) => {
   try {
     const userId = await getCurrentUserId();
-    const { toSupabaseVehicle } = await import('./vehicleUtils');
     const supabaseVehicle = toSupabaseVehicle(vehicle);
     const { data, error } = await supabase
       .from('vehicles')

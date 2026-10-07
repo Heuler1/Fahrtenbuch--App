@@ -87,3 +87,34 @@ test('mobile session storage uses AsyncStorage and disables URL detection', asyn
   }, { process: { env: { EXPO_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', EXPO_PUBLIC_SUPABASE_ANON_KEY: 'test' } } });
   assert.equal(options.auth.storage, adapter); assert.equal(options.auth.detectSessionInUrl, false);
 });
+test('vehicle validation names missing fields and accepts zero mileage', async () => {
+  const { validateVehicleForm } = await load('../utils/vehicleForm.js');
+  assert.throws(() => validateVehicleForm({}), /Fahrzeugname, Baujahr, Kennzeichen, Kilometerstand/);
+  const input = { name: ' Test ', year: '1969', licensePlate: ' RO-TEST ', mileage: '0', fuelLevel: '0' };
+  const result = validateVehicleForm(input, 2026);
+  assert.equal(result.name, 'Test'); assert.equal(result.mileage, 0); assert.equal(result.fuelLevel, 0);
+  assert.equal(result.nextInspection, '');
+});
+test('vehicle odometer is not silently truncated and numeric input is validated', async () => {
+  const { validateVehicleForm } = await load('../utils/vehicleForm.js');
+  const input = { name: 'Test', year: '1969', licensePlate: 'TEST', mileage: '78.432', fuelLevel: '50' };
+  assert.equal(validateVehicleForm(input, 2026).mileage, 78432);
+  for (const mileage of ['78,5', '78abc', '-1', '1.23', '2147483648']) assert.throws(() => validateVehicleForm({ ...input, mileage }, 2026));
+  for (const year of ['1969x', '2027']) assert.throws(() => validateVehicleForm({ ...input, year }, 2026));
+  assert.throws(() => validateVehicleForm({ ...input, fuelLevel: '101' }, 2026));
+});
+test('vehicle insert maps fields and surfaces database rejection', async () => {
+  let inserted;
+  let fail = false;
+  const storage = await load('../utils/supabaseStorage.js', { './supabaseClient': { supabase: {
+    auth: { getUser: async () => ({ data: { user: { id: 'owner' } }, error: null }) },
+    from: table => { assert.equal(table, 'vehicles'); return { insert: row => {
+      inserted = row; return { select: () => ({ single: async () => fail ? { error: { code: '42501', message: 'denied' } } : { data: { id: 'saved', ...row }, error: null } }) };
+    } }; },
+  } } });
+  const result = await storage.addVehicle({ name: 'Test', year: 1969, mileage: 0, fuelLevel: 50, licensePlate: 'TEST' });
+  assert.equal(result.id, 'saved'); assert.equal(inserted.user_id, 'owner'); assert.equal(inserted.license_plate, 'TEST');
+  assert.equal(inserted.insurance_cost, 0); assert.equal(inserted.next_inspection, '');
+  fail = true;
+  await assert.rejects(storage.addVehicle({ name: 'Test' }), e => e.code === '42501');
+});
