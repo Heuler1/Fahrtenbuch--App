@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert, Switch, Modal, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Save, Trash2, CreditCard as Edit, Camera, X, Plus, Car } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { getVehicles, updateVehicle, deleteVehicle } from '../../utils/storage';
+import { showMessage, errorMessage } from '../../utils/showMessage';
 import { toSupabaseVehicle } from '../../utils/vehicleUtils';
 
 export default function VehicleScreen() {
@@ -14,6 +15,8 @@ export default function VehicleScreen() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [vehicle, setVehicle] = useState(null);
+  const writeInProgress = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const loadVehicle = async () => {
@@ -27,16 +30,16 @@ export default function VehicleScreen() {
           if (foundVehicle) {
             setVehicle(foundVehicle);
           } else {
-            Alert.alert('Fehler', 'Fahrzeug nicht gefunden.');
+            showMessage('Fehler', 'Fahrzeug nicht gefunden.');
             router.back();
           }
         } else {
-          Alert.alert('Fehler', 'Keine Fahrzeug-ID angegeben.');
+          showMessage('Fehler', 'Keine Fahrzeug-ID angegeben.');
           router.back();
         }
       } catch (error) {
         console.error('Error loading vehicle:', error);
-        Alert.alert('Fehler', 'Beim Laden des Fahrzeugs ist ein Fehler aufgetreten.');
+        showMessage('Fehler', 'Beim Laden des Fahrzeugs ist ein Fehler aufgetreten.');
         router.back();
       } finally {
         setIsLoading(false);
@@ -47,27 +50,40 @@ export default function VehicleScreen() {
   }, [params.id]);
 
   const handleSave = async () => {
+    if (writeInProgress.current) return;
+    writeInProgress.current = true;
+    setIsSaving(true);
     try {
       const supabaseUpdates = toSupabaseVehicle(vehicle);
-      await updateVehicle(vehicle.id, supabaseUpdates);
-      Alert.alert('Gespeichert', 'Fahrzeugdaten wurden erfolgreich gespeichert.');
+      const saved = await updateVehicle(vehicle.id, supabaseUpdates, vehicle.updatedAt);
+      setVehicle(saved);
+      showMessage('Gespeichert', 'Fahrzeugdaten wurden erfolgreich gespeichert.');
       setIsEditing(false);
     } catch (error) {
       console.error('Error saving vehicle:', error);
-      Alert.alert('Fehler', 'Beim Speichern ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
+    } finally {
+      writeInProgress.current = false;
+      setIsSaving(false);
     }
   };
 
   const handleDelete = async () => {
+    if (writeInProgress.current) return;
+    writeInProgress.current = true;
+    setIsSaving(true);
     try {
-      await deleteVehicle(vehicle.id);
+      await deleteVehicle(vehicle.id, vehicle.updatedAt);
       setShowDeleteModal(false);
-      Alert.alert('Gelöscht', 'Fahrzeug wurde erfolgreich gelöscht.');
+      showMessage('Gelöscht', 'Fahrzeug wurde erfolgreich gelöscht.');
       router.replace('/(tabs)/vehicles');
     } catch (error) {
       console.error('Error deleting vehicle:', error);
-      Alert.alert('Fehler', 'Beim Löschen ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
       setShowDeleteModal(false);
+    } finally {
+      writeInProgress.current = false;
+      setIsSaving(false);
     }
   };
 
@@ -76,7 +92,7 @@ export default function VehicleScreen() {
       if (Platform.OS !== 'web') {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Fehler', 'Wir benötigen die Berechtigung, um auf Ihre Fotos zuzugreichen.');
+          showMessage('Fehler', 'Wir benötigen die Berechtigung, um auf Ihre Fotos zuzugreichen.');
           return;
         }
       }
@@ -96,7 +112,7 @@ export default function VehicleScreen() {
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Fehler', 'Beim Auswählen des Bildes ist ein Fehler aufgetreten.');
+      showMessage('Fehler', 'Beim Auswählen des Bildes ist ein Fehler aufgetreten.');
     }
   };
 
@@ -105,7 +121,7 @@ export default function VehicleScreen() {
       if (Platform.OS !== 'web') {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Fehler', 'Wir benötigen die Berechtigung, um auf Ihre Fotos zuzugreichen.');
+          showMessage('Fehler', 'Wir benötigen die Berechtigung, um auf Ihre Fotos zuzugreichen.');
           return;
         }
       }
@@ -125,7 +141,7 @@ export default function VehicleScreen() {
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Fehler', 'Beim Auswählen des Bildes ist ein Fehler aufgetreten.');
+      showMessage('Fehler', 'Beim Auswählen des Bildes ist ein Fehler aufgetreten.');
     }
   };
 
@@ -259,7 +275,7 @@ export default function VehicleScreen() {
         </TouchableOpacity>
         <Text style={styles.title}>Fahrzeugdetails</Text>
         {isEditing ? (
-          <TouchableOpacity onPress={handleSave} style={styles.actionButton}>
+          <TouchableOpacity disabled={isSaving} onPress={handleSave} style={styles.actionButton}>
             <Save color="#8B4513" size={24} />
           </TouchableOpacity>
         ) : (
@@ -537,7 +553,7 @@ export default function VehicleScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, styles.confirmButton]}
-                onPress={handleDelete}
+                disabled={isSaving} onPress={handleDelete}
               >
                 <Text style={styles.confirmButtonText}>Löschen</Text>
               </TouchableOpacity>
@@ -979,3 +995,4 @@ const styles = StyleSheet.create({
     color: '#666',
   },
 });
+

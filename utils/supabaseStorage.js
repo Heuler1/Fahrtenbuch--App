@@ -71,39 +71,6 @@ export const getVehicles = async () => {
   }
 };
 
-export const setVehicles = async (vehicles) => {
-  try {
-    const userId = await getCurrentUserId();
-    
-    // Delete existing vehicles for this user
-    const { error: deleteError } = await supabase
-      .from('vehicles')
-      .delete()
-      .eq('user_id', userId);
-    if (deleteError) throw deleteError;
-
-    // Insert new vehicles
-    if (vehicles && vehicles.length > 0) {
-      const vehiclesWithUserId = vehicles.map(vehicle => ({
-        ...vehicle,
-        user_id: userId,
-        id: vehicle.id || undefined, // Let Supabase generate ID if not provided
-      }));
-
-      const { data, error } = await supabase
-        .from('vehicles')
-        .insert(vehiclesWithUserId)
-        .select();
-
-      if (error) throw error;
-      return data;
-    }
-    return [];
-  } catch (error) {
-    console.error('Error saving vehicles:', error);
-    throw error;
-  }
-};
 
 export const addVehicle = async (vehicle) => {
   try {
@@ -126,35 +93,41 @@ export const addVehicle = async (vehicle) => {
   }
 };
 
-export const updateVehicle = async (vehicleId, updates) => {
+export const updateVehicle = async (vehicleId, updates, expectedUpdatedAt) => {
   try {
     const userId = await getCurrentUserId();
+    requireVersion({ id: vehicleId, updatedAt: expectedUpdatedAt });
     const { data, error } = await supabase
       .from('vehicles')
       .update(updates)
       .eq('id', vehicleId)
       .eq('user_id', userId)
-      .select()
-      .single();
+      .eq('updated_at', expectedUpdatedAt)
+      .select();
 
     if (error) throw error;
-    return data;
+    if (!data?.length) throw new Error(CONFLICT_MESSAGE);
+    return data[0];
   } catch (error) {
     console.error('Error updating vehicle:', error);
     throw error;
   }
 };
 
-export const deleteVehicle = async (vehicleId) => {
+export const deleteVehicle = async (vehicleId, expectedUpdatedAt) => {
   try {
     const userId = await getCurrentUserId();
-    const { error } = await supabase
+    requireVersion({ id: vehicleId, updatedAt: expectedUpdatedAt });
+    const { data, error } = await supabase
       .from('vehicles')
       .delete()
       .eq('id', vehicleId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('updated_at', expectedUpdatedAt)
+      .select('id');
 
     if (error) throw error;
+    if (!data?.length) throw new Error(CONFLICT_MESSAGE);
     return true;
   } catch (error) {
     console.error('Error deleting vehicle:', error);
@@ -180,47 +153,6 @@ export const getFuelEntries = async () => {
   }
 };
 
-export const setFuelEntries = async (entries) => {
-  try {
-    const userId = await getCurrentUserId();
-    
-    // Delete existing entries for this user
-    const { error: deleteError } = await supabase
-      .from('fuel_entries')
-      .delete()
-      .eq('user_id', userId);
-    if (deleteError) throw deleteError;
-
-    // Insert new entries
-    if (entries && entries.length > 0) {
-      const entriesWithUserId = entries.map(entry => ({
-        user_id: userId,
-        date: entry.date,
-        station: entry.station,
-        location: entry.location || '',
-        amount: entry.amount,
-        price: entry.price,
-        total_cost: entry.totalCost,
-        mileage: entry.mileage,
-        consumption: entry.consumption,
-        receipt_image_url: entry.receiptImage || '',
-        vehicle_id: entry.vehicleId || null,
-      }));
-
-      const { data, error } = await supabase
-        .from('fuel_entries')
-        .insert(entriesWithUserId)
-        .select();
-
-      if (error) throw error;
-      return data;
-    }
-    return [];
-  } catch (error) {
-    console.error('Error saving fuel entries:', error);
-    throw error;
-  }
-};
 
 // Trips functions
 export const getTrips = async () => {
@@ -240,47 +172,6 @@ export const getTrips = async () => {
   }
 };
 
-export const setTrips = async (trips) => {
-  try {
-    const userId = await getCurrentUserId();
-    
-    // Delete existing trips for this user
-    const { error: deleteError } = await supabase
-      .from('trips')
-      .delete()
-      .eq('user_id', userId);
-    if (deleteError) throw deleteError;
-
-    // Insert new trips
-    if (trips && trips.length > 0) {
-      const tripsWithUserId = trips.map(trip => ({
-        user_id: userId,
-        date: trip.date,
-        start_location: trip.start,
-        destination: trip.destination,
-        distance: trip.distance,
-        category: trip.category,
-        start_mileage: trip.startMileage,
-        end_mileage: trip.endMileage,
-        notes: trip.notes || '',
-        weather: trip.weather || '',
-        vehicle_id: trip.vehicleId || null,
-      }));
-
-      const { data, error } = await supabase
-        .from('trips')
-        .insert(tripsWithUserId)
-        .select();
-
-      if (error) throw error;
-      return data;
-    }
-    return [];
-  } catch (error) {
-    console.error('Error saving trips:', error);
-    throw error;
-  }
-};
 
 // Maintenance entries functions
 export const getMaintenanceEntries = async () => {
@@ -300,47 +191,6 @@ export const getMaintenanceEntries = async () => {
   }
 };
 
-export const setMaintenanceEntries = async (entries) => {
-  try {
-    const userId = await getCurrentUserId();
-    
-    // Delete existing entries for this user
-    const { error: deleteError } = await supabase
-      .from('maintenance_entries')
-      .delete()
-      .eq('user_id', userId);
-    if (deleteError) throw deleteError;
-
-    // Insert new entries
-    if (entries && entries.length > 0) {
-      const entriesWithUserId = entries.map(entry => ({
-        user_id: userId,
-        date: entry.date,
-        type: entry.type,
-        title: entry.title,
-        workshop: entry.workshop || '',
-        cost: entry.cost,
-        mileage: entry.mileage,
-        description: entry.description || '',
-        parts: entry.parts || [],
-        receipt_image_url: entry.receiptImage || '',
-        vehicle_id: entry.vehicleId || null,
-      }));
-
-      const { data, error } = await supabase
-        .from('maintenance_entries')
-        .insert(entriesWithUserId)
-        .select();
-
-      if (error) throw error;
-      return data;
-    }
-    return [];
-  } catch (error) {
-    console.error('Error saving maintenance entries:', error);
-    throw error;
-  }
-};
 
 // Reminders functions
 export const getReminders = async () => {
@@ -360,45 +210,6 @@ export const getReminders = async () => {
   }
 };
 
-export const setReminders = async (reminders) => {
-  try {
-    const userId = await getCurrentUserId();
-    
-    // Delete existing reminders for this user
-    const { error: deleteError } = await supabase
-      .from('reminders')
-      .delete()
-      .eq('user_id', userId);
-    if (deleteError) throw deleteError;
-
-    // Insert new reminders
-    if (reminders && reminders.length > 0) {
-      const remindersWithUserId = reminders.map(reminder => ({
-        user_id: userId,
-        title: reminder.title,
-        date: reminder.date,
-        type: reminder.type,
-        description: reminder.description || '',
-        notify_days: reminder.notifyDays,
-        active: reminder.active,
-        priority: reminder.priority,
-        vehicle_id: reminder.vehicleId || null,
-      }));
-
-      const { data, error } = await supabase
-        .from('reminders')
-        .insert(remindersWithUserId)
-        .select();
-
-      if (error) throw error;
-      return data;
-    }
-    return [];
-  } catch (error) {
-    console.error('Error saving reminders:', error);
-    throw error;
-  }
-};
 
 // Helper functions
 export const getCurrentVehicle = async () => {
@@ -411,34 +222,6 @@ export const getCurrentVehicle = async () => {
   }
 };
 
-export const setCurrentVehicle = async (vehicle) => {
-  // This is handled by the is_active flag in the vehicles table
-  try {
-    const userId = await getCurrentUserId();
-    
-    // Set all vehicles to inactive
-    const { error: resetError } = await supabase
-      .from('vehicles')
-      .update({ is_active: false })
-      .eq('user_id', userId);
-    if (resetError) throw resetError;
-    
-    // Set the selected vehicle to active
-    if (vehicle && vehicle.id) {
-      const { error: selectError } = await supabase
-        .from('vehicles')
-        .update({ is_active: true })
-        .eq('id', vehicle.id)
-        .eq('user_id', userId);
-      if (selectError) throw selectError;
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Error setting current vehicle:', error);
-    throw error;
-  }
-};
 
 // Generate ID function (for compatibility)
 export const generateId = () => {
@@ -465,3 +248,62 @@ export const sortDatesASC = (a, b) => {
   const dateB = b.split('.').reverse().join('');
   return dateA.localeCompare(dateB);
 };
+
+const CONFLICT_MESSAGE = 'Dieser Eintrag wurde inzwischen geändert oder gelöscht. Bitte die Ansicht neu laden und die Änderung erneut prüfen.';
+function requireVersion(record) {
+  if (!record?.id || !record.updatedAt) throw new Error('Die Version des Eintrags fehlt. Bitte die Ansicht neu laden.');
+}
+
+// One HTTP mutation per record. Postgres checks the version in the same UPDATE/DELETE.
+// Never replace a user's collection and never send caller-supplied ownership metadata.
+async function ownVehicle(userId, vehicleId) {
+  if (!vehicleId) throw new Error('Bitte ein Fahrzeug auswählen. Alte Einträge ohne Zuordnung müssen beim Bearbeiten einem Fahrzeug zugeordnet werden.');
+  const { data, error } = await supabase.from('vehicles').select('id').eq('id', vehicleId).eq('user_id', userId).single();
+  if (error || !data) throw new Error('Das ausgewählte Fahrzeug ist nicht verfügbar. Bitte die Ansicht neu laden.');
+}
+async function createRecord(table, fields) {
+  const userId = await getCurrentUserId();
+  await ownVehicle(userId, fields.vehicle_id);
+  const { data, error } = await supabase.from(table).insert({ ...fields, user_id: userId }).select().single();
+  if (error) throw error;
+  return data;
+}
+async function updateRecord(table, record, fields) {
+  requireVersion(record);
+  const userId = await getCurrentUserId();
+  await ownVehicle(userId, fields.vehicle_id);
+  const { data, error } = await supabase.from(table).update(fields)
+    .eq('id', record.id).eq('user_id', userId).eq('updated_at', record.updatedAt).select();
+  if (error) throw error;
+  if (!data?.length) throw new Error(CONFLICT_MESSAGE);
+  return data[0];
+}
+async function deleteRecord(table, record) {
+  requireVersion(record);
+  const userId = await getCurrentUserId();
+  const { data, error } = await supabase.from(table).delete()
+    .eq('id', record.id).eq('user_id', userId).eq('updated_at', record.updatedAt).select('id');
+  if (error) throw error;
+  if (!data?.length) throw new Error(CONFLICT_MESSAGE);
+  return record.id;
+}
+
+const mapFuelEntry = e => ({ date: e.date, station: e.station, location: e.location || '', amount: e.amount, price: e.price, total_cost: e.totalCost, mileage: e.mileage, consumption: e.consumption, receipt_image_url: e.receiptImage || '', vehicle_id: e.vehicleId });
+export const addFuelEntry = e => createRecord('fuel_entries', mapFuelEntry(e));
+export const updateFuelEntry = e => updateRecord('fuel_entries', e, mapFuelEntry(e));
+export const deleteFuelEntry = e => deleteRecord('fuel_entries', e);
+
+const mapTrip = e => ({ date: e.date, start_location: e.start, destination: e.destination, distance: e.distance, category: e.category, start_mileage: e.startMileage, end_mileage: e.endMileage, notes: e.notes || '', weather: e.weather || '', vehicle_id: e.vehicleId });
+export const addTrip = e => createRecord('trips', mapTrip(e));
+export const updateTrip = e => updateRecord('trips', e, mapTrip(e));
+export const deleteTrip = e => deleteRecord('trips', e);
+
+const mapMaintenanceEntry = e => ({ date: e.date, type: e.type, title: e.title, workshop: e.workshop || '', cost: e.cost, mileage: e.mileage, description: e.description || '', parts: e.parts || [], receipt_image_url: e.receiptImage || '', vehicle_id: e.vehicleId });
+export const addMaintenanceEntry = e => createRecord('maintenance_entries', mapMaintenanceEntry(e));
+export const updateMaintenanceEntry = e => updateRecord('maintenance_entries', e, mapMaintenanceEntry(e));
+export const deleteMaintenanceEntry = e => deleteRecord('maintenance_entries', e);
+
+const mapReminder = e => ({ title: e.title, date: e.date, type: e.type, description: e.description || '', notify_days: e.notifyDays, active: e.active, priority: e.priority, vehicle_id: e.vehicleId });
+export const addReminder = e => createRecord('reminders', mapReminder(e));
+export const updateReminder = e => updateRecord('reminders', e, mapReminder(e));
+export const deleteReminder = e => deleteRecord('reminders', e);

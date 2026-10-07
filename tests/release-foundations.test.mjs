@@ -72,8 +72,8 @@ test('cloud read failures are never converted to empty data', async () => {
 });
 test('storage facade propagates writes and never acknowledges a local fallback', async () => {
   const fail = async () => { throw new Error('offline'); };
-  const storage = await load('../utils/storage.js', { './supabaseStorage': { setTrips: fail, getTrips: fail } });
-  await assert.rejects(storage.setTrips([trip]), /offline/);
+  const storage = await load('../utils/storage.js', { './supabaseStorage': { addTrip: fail, getTrips: fail } });
+  await assert.rejects(storage.addTrip(trip), /offline/);
   await assert.rejects(storage.getTrips(), /offline/);
 });
 test('mobile session storage uses AsyncStorage and disables URL detection', async () => {
@@ -117,4 +117,104 @@ test('vehicle insert maps fields and surfaces database rejection', async () => {
   assert.equal(inserted.insurance_cost, 0); assert.equal(inserted.next_inspection, '');
   fail = true;
   await assert.rejects(storage.addVehicle({ name: 'Test' }), e => e.code === '42501');
+});
+
+// Model the server's filtered atomic mutations and updated_at trigger.
+async function recordFixture() {
+  const db = { vehicles: [{ id: 'v1', user_id: 'owner' }, { id: 'v2', user_id: 'owner' }, { id: 'foreign', user_id: 'other' }] };
+  const operations = [];
+  let serial = 1, failWrite = false;
+  const client = {
+    auth: { getUser: async () => ({ data: { user: { id: 'owner' } }, error: null }) },
+    from(table) {
+      const filters = []; let action = 'select', payload;
+      const execute = () => {
+        operations.push({ table, action, filters: [...filters], payload });
+        const rows = db[table] ||= [];
+        const matches = rows.filter(row => filters.every(([k, v]) => row[k] === v));
+        if (action !== 'select' && failWrite) return { error: { message: 'network write failed' }, data: null };
+        if (action === 'insert') {
+          const row = { ...payload, id: `uuid-${serial++}`, updated_at: `version-${serial++}` };
+          rows.push(row); return { data: [row], error: null };
+        }
+        if (action === 'update') for (const row of matches) Object.assign(row, payload, { updated_at: `version-${serial++}` });
+        if (action === 'delete') db[table] = rows.filter(row => !matches.includes(row));
+        return { data: matches.map(row => ({ ...row })), error: null };
+      };
+      const q = {
+        select: () => q, eq: (k, v) => { filters.push([k, v]); return q; }, order: () => q,
+        insert: data => { action = 'insert'; payload = data; return q; },
+        update: data => { action = 'update'; payload = data; return q; },
+        delete: () => { action = 'delete'; return q; },
+        single: async () => { const r = execute(); return { ...r, data: r.data?.[0] ?? null }; },
+        then: (resolve, reject) => Promise.resolve(execute()).then(resolve, reject),
+      };
+      return q;
+    },
+  };
+  const storage = await load('../utils/supabaseStorage.js', { './supabaseClient': { supabase: client } });
+  return { storage, db, operations, setFailure: value => { failWrite = value; } };
+}
+
+for (const [name, table, fields] of [
+  ['Trip', 'trips', { date: '07.10.2026', start: 'Linz', destination: 'Wien', category: 'Freizeit', distance: 200, startMileage: 0, endMileage: 200 }],
+  ['FuelEntry', 'fuel_entries', { date: '07.10.2026', station: 'Test', amount: 20, price: 1.5, totalCost: 30, mileage: 200, consumption: 10 }],
+  ['MaintenanceEntry', 'maintenance_entries', { date: '07.10.2026', title: 'Service', type: 'Wartung', cost: 10, mileage: 200 }],
+  ['Reminder', 'reminders', { date: '07.10.2026', title: 'Service', type: 'inspection', active: true, notifyDays: 14, priority: 'medium' }],
+]) {
+  test(`${name}: single-row create/update/delete preserves other vehicles and owners`, async () => {
+    const { storage, db, operations } = await recordFixture();
+    db[table] = [{ id: 'other-owner', user_id: 'other', vehicle_id: 'foreign', updated_at: 'old' }];
+    const first = await storage[`add${name}`]({ ...fields, vehicleId: 'v1', id: 'caller-id', user_id: 'other' });
+    const second = await storage[`add${name}`]({ ...fields, vehicleId: 'v2' });
+    assert.notEqual(first.id, 'caller-id'); assert.equal(first.user_id, 'owner');
+    const version = first.updated_at;
+    const changed = await storage[`update${name}`]({ ...fields, id: first.id, updatedAt: version, vehicleId: 'v1' });
+    assert.equal(changed.id, first.id); assert.notEqual(changed.updated_at, version);
+    assert.equal(db[table].find(row => row.id === second.id).updated_at, second.updated_at);
+    await assert.rejects(storage[`update${name}`]({ ...fields, id: first.id, updatedAt: version, vehicleId: 'v1' }), /inzwischen geändert/);
+    await assert.rejects(storage[`delete${name}`]({ id: first.id, updatedAt: version }), /inzwischen geändert/);
+    await storage[`delete${name}`]({ id: first.id, updatedAt: changed.updated_at });
+    assert.deepEqual(db[table].map(row => row.id).sort(), ['other-owner', second.id].sort());
+    for (const op of operations.filter(op => ['delete', 'update'].includes(op.action))) {
+      assert.ok(op.filters.some(([key]) => key === 'id'));
+      assert.ok(op.filters.some(([key, value]) => key === 'user_id' && value === 'owner'));
+      assert.ok(op.filters.some(([key]) => key === 'updated_at'));
+    }
+  });
+  test(`${name}: failed write, foreign vehicle and missing association leave data intact`, async () => {
+    const { storage, db, operations, setFailure } = await recordFixture();
+    const first = await storage[`add${name}`]({ ...fields, vehicleId: 'v1' });
+    const before = JSON.stringify(db);
+    for (const vehicleId of [null, 'foreign']) await assert.rejects(storage[`add${name}`]({ ...fields, vehicleId }));
+    await assert.rejects(storage[`update${name}`]({ ...fields, id: first.id, vehicleId: 'v1' }), /Version/);
+    setFailure(true);
+    await assert.rejects(storage[`update${name}`]({ ...fields, id: first.id, vehicleId: 'v1', updatedAt: first.updated_at }), e => e.message === 'network write failed');
+    await assert.rejects(storage[`add${name}`]({ ...fields, vehicleId: 'v1' }));
+    assert.equal(JSON.stringify(db), before);
+    assert.equal(operations.filter(op => op.action === 'delete').length, 0);
+  });
+}
+test('legacy unassigned record retains ID when explicitly assigned to an owned vehicle', async () => {
+  const { storage, db } = await recordFixture();
+  db.trips = [{ id: 'legacy', user_id: 'owner', vehicle_id: null, updated_at: 'legacy-version' }];
+  const result = await storage.updateTrip({ ...trip, id: 'legacy', updatedAt: 'legacy-version', vehicleId: 'v2' });
+  assert.equal(result.id, 'legacy'); assert.equal(result.vehicle_id, 'v2');
+});
+test('vehicle normalizers preserve exact server version for compare-and-swap', async () => {
+  const { normalizeTrip, normalizeVehicle } = await load('../utils/vehicleUtils.js');
+  const version = '2026-10-07T19:00:00.123456+00:00';
+  assert.equal(normalizeTrip({ id: 't1', updated_at: version }).updatedAt, version);
+  assert.equal(normalizeVehicle({ id: 'v1', updated_at: version }).updatedAt, version);
+});
+test('vehicle edit and deletion reject stale versions without touching siblings', async () => {
+  const { storage, db } = await recordFixture();
+  db.vehicles[0].updated_at = 'v1-old';
+  const saved = await storage.updateVehicle('v1', { name: 'Changed' }, 'v1-old');
+  assert.equal(saved.id, 'v1');
+  await assert.rejects(storage.updateVehicle('v1', { name: 'Stale' }, 'v1-old'), /inzwischen geändert/);
+  await assert.rejects(storage.deleteVehicle('v1', 'v1-old'), /inzwischen geändert/);
+  assert.equal(db.vehicles[0].name, 'Changed');
+  await storage.deleteVehicle('v1', saved.updated_at);
+  assert.deepEqual(db.vehicles.map(row => row.id), ['v2', 'foreign']);
 });

@@ -13,6 +13,17 @@ export const getFuelEntries = async () => (await SupabaseStorage.getFuelEntries(
 export const getTrips = async () => (await SupabaseStorage.getTrips()).map(normalizeTrip).filter(entry => entry !== null);
 export const getMaintenanceEntries = async () => (await SupabaseStorage.getMaintenanceEntries()).map(normalizeMaintenanceEntry).filter(entry => entry !== null);
 export const getReminders = async () => (await SupabaseStorage.getReminders()).map(normalizeReminder).filter(entry => entry !== null);
-export const { setVehicles, updateVehicle, deleteVehicle, setCurrentVehicle,
-  getUserProfile, setUserProfile, setFuelEntries, setTrips, setMaintenanceEntries,
-  setReminders, generateId, sortDatesDESC, sortDatesASC, getTodayFormatted } = SupabaseStorage;
+export const updateVehicle = async (id, updates, expectedUpdatedAt) => normalizeVehicles([await SupabaseStorage.updateVehicle(id, updates, expectedUpdatedAt)])[0];
+export const { deleteVehicle, getUserProfile, setUserProfile, generateId, sortDatesDESC, sortDatesASC, getTodayFormatted } = SupabaseStorage;
+export const addFuelEntry = async e => normalizeFuelEntry(await SupabaseStorage.addFuelEntry(e));
+export const updateFuelEntry = async e => normalizeFuelEntry(await SupabaseStorage.updateFuelEntry(e));
+export const deleteFuelEntry = SupabaseStorage.deleteFuelEntry;
+export const addTrip = async e => normalizeTrip(await SupabaseStorage.addTrip(e));
+export const updateTrip = async e => normalizeTrip(await SupabaseStorage.updateTrip(e));
+export const deleteTrip = SupabaseStorage.deleteTrip;
+export const addMaintenanceEntry = async e => normalizeMaintenanceEntry(await SupabaseStorage.addMaintenanceEntry(e));
+export const updateMaintenanceEntry = async e => normalizeMaintenanceEntry(await SupabaseStorage.updateMaintenanceEntry(e));
+export const deleteMaintenanceEntry = SupabaseStorage.deleteMaintenanceEntry;
+export const addReminder = async e => normalizeReminder(await SupabaseStorage.addReminder(e));
+export const updateReminder = async e => normalizeReminder(await SupabaseStorage.updateReminder(e));
+export const deleteReminder = SupabaseStorage.deleteReminder;

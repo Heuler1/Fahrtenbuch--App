@@ -1,9 +1,13 @@
+import { useFocusEffect } from 'expo-router';
+import VehicleSelect from '../../components/VehicleSelect';
+import { useRecordVehicles } from '../../hooks/useRecordVehicles';
+import { showMessage, errorMessage } from '../../utils/showMessage';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, Modal, TextInput, ScrollView, Platform, Alert } from 'react-native';
 import { Plus, Calendar, Compass as GasPump, Banknote, TrendingUp, ChevronRight, MapPin, X, Save, Trash2, CreditCard as Edit, Camera, ChevronDown, ChevronUp, FileText } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import ConsumptionChart from '../../components/ConsumptionChart';
-import { getFuelEntries, setFuelEntries, generateId, getTodayFormatted } from '../../utils/storage';
+import { getFuelEntries, addFuelEntry, updateFuelEntry, deleteFuelEntry, getTodayFormatted } from '../../utils/storage';
 
 export default function FuelScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
@@ -23,10 +27,12 @@ export default function FuelScreen() {
     receiptImage: ''
   });
   
-  const [fuelEntries, setFuelEntriesState] = useState([]);
+  const [allFuelEntries, setFuelEntriesState] = useState([]);
+  const { vehicles, scope, setScope, newRecordVehicleId, setNewVehicleId, matchesVehicle, vehicleName, isSaving, runMutation } = useRecordVehicles();
+  const fuelEntries = allFuelEntries.filter(matchesVehicle);
 
   // Load fuel entries from storage
-  useEffect(() => {
+  useFocusEffect(React.useCallback(() => {
     const loadFuelEntries = async () => {
       try {
         setIsLoading(true);
@@ -42,19 +48,19 @@ export default function FuelScreen() {
         }
       } catch (error) {
         console.error('Error loading fuel entries:', error);
-        Alert.alert('Fehler', 'Beim Laden der Tankstopps ist ein Fehler aufgetreten.');
+        showMessage('Fehler', errorMessage(error));
       } finally {
         setIsLoading(false);
       }
     };
 
     loadFuelEntries();
-  }, []);
+  }, []));
 
-  const handleAddFuelEntry = async () => {
+  const handleAddFuelEntry = () => runMutation(async () => {
     // Validate required fields
     if (!newFuelEntry.date || !newFuelEntry.station || !newFuelEntry.amount || !newFuelEntry.price || !newFuelEntry.mileage) {
-      Alert.alert('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
+      showMessage('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
       return;
     }
 
@@ -64,24 +70,24 @@ export default function FuelScreen() {
     const mileage = parseInt(newFuelEntry.mileage);
     
     if (isNaN(amount) || amount <= 0) {
-      Alert.alert('Fehler', 'Bitte geben Sie eine gültige Menge ein.');
+      showMessage('Fehler', 'Bitte geben Sie eine gültige Menge ein.');
       return;
     }
     
     if (isNaN(price) || price <= 0) {
-      Alert.alert('Fehler', 'Bitte geben Sie einen gültigen Preis ein.');
+      showMessage('Fehler', 'Bitte geben Sie einen gültigen Preis ein.');
       return;
     }
     
     if (isNaN(mileage) || mileage <= 0) {
-      Alert.alert('Fehler', 'Bitte geben Sie einen gültigen Kilometerstand ein.');
+      showMessage('Fehler', 'Bitte geben Sie einen gültigen Kilometerstand ein.');
       return;
     }
     try {
       const totalCost = amount * price;
       
       // Find previous entry to calculate consumption
-      const sortedEntries = [...fuelEntries].sort((a, b) => b.mileage - a.mileage);
+      const sortedEntries = allFuelEntries.filter(entry => entry.vehicleId === newRecordVehicleId && entry.mileage < mileage).sort((a, b) => b.mileage - a.mileage);
       const previousEntry = sortedEntries[0];
       
       let consumption = 0;
@@ -91,7 +97,7 @@ export default function FuelScreen() {
       }
 
       const fuelEntryToAdd = {
-        id: generateId(),
+        vehicleId: newRecordVehicleId,
         date: newFuelEntry.date,
         station: newFuelEntry.station,
         location: newFuelEntry.location || 'Keine Angabe',
@@ -103,24 +109,23 @@ export default function FuelScreen() {
         receiptImage: newFuelEntry.receiptImage
       };
 
-      const updatedEntries = [fuelEntryToAdd, ...fuelEntries];
-      await setFuelEntries(updatedEntries);
-      setFuelEntriesState(updatedEntries);
+      const saved = await addFuelEntry(fuelEntryToAdd);
+      setFuelEntriesState(previous => [saved, ...previous]);
       
       setShowAddModal(false);
       resetNewFuelEntry();
       
-      Alert.alert('Erfolg', 'Tankstopp wurde erfolgreich hinzugefügt.');
+      showMessage('Erfolg', 'Tankstopp wurde erfolgreich hinzugefügt.');
     } catch (error) {
       console.error('Error adding fuel entry:', error);
-      Alert.alert('Fehler', 'Beim Hinzufügen des Tankstopps ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
-  };
+  });
 
-  const handleEditFuelEntry = async () => {
+  const handleEditFuelEntry = () => runMutation(async () => {
     // Validate required fields
-    if (!currentFuelEntry.date || !currentFuelEntry.station || !currentFuelEntry.amount || !currentFuelEntry.price || !currentFuelEntry.mileage) {
-      Alert.alert('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
+    if (!currentFuelEntry.date || !currentFuelEntry.station || !currentFuelEntry.amount || !currentFuelEntry.price || (currentFuelEntry.mileage === null || currentFuelEntry.mileage === undefined || currentFuelEntry.mileage === '')) {
+      showMessage('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
       return;
     }
 
@@ -132,7 +137,7 @@ export default function FuelScreen() {
       const totalCost = amount * price;
       
       // Find previous entry to calculate consumption
-      const otherEntries = fuelEntries.filter(entry => entry.id !== currentFuelEntry.id);
+      const otherEntries = allFuelEntries.filter(entry => entry.id !== currentFuelEntry.id && entry.vehicleId === currentFuelEntry.vehicleId);
       const sortedEntries = [...otherEntries].sort((a, b) => b.mileage - a.mileage);
       const previousEntry = sortedEntries.find(entry => entry.mileage < mileage);
       
@@ -152,37 +157,35 @@ export default function FuelScreen() {
         location: currentFuelEntry.location || 'Keine Angabe'
       };
 
-      const updatedEntries = fuelEntries.map(entry => entry.id === currentFuelEntry.id ? updatedEntry : entry);
-      await setFuelEntries(updatedEntries);
-      setFuelEntriesState(updatedEntries);
+      const saved = await updateFuelEntry(updatedEntry);
+      setFuelEntriesState(previous => previous.map(entry => entry.id === saved.id ? saved : entry));
       
       setShowEditModal(false);
       setCurrentFuelEntry(null);
       
-      Alert.alert('Erfolg', 'Tankstopp wurde erfolgreich aktualisiert.');
+      showMessage('Erfolg', 'Tankstopp wurde erfolgreich aktualisiert.');
     } catch (error) {
       console.error('Error editing fuel entry:', error);
-      Alert.alert('Fehler', 'Beim Bearbeiten des Tankstopps ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
-  };
+  });
 
-  const handleDeleteFuelEntry = async () => {
+  const handleDeleteFuelEntry = () => runMutation(async () => {
     if (!currentFuelEntry) return;
     
     try {
-      const updatedEntries = fuelEntries.filter(entry => entry.id !== currentFuelEntry.id);
-      await setFuelEntries(updatedEntries);
-      setFuelEntriesState(updatedEntries);
+      await deleteFuelEntry(currentFuelEntry);
+      setFuelEntriesState(previous => previous.filter(entry => entry.id !== currentFuelEntry.id));
       
       setShowDeleteModal(false);
       setCurrentFuelEntry(null);
       
-      Alert.alert('Erfolg', 'Tankstopp wurde erfolgreich gelöscht.');
+      showMessage('Erfolg', 'Tankstopp wurde erfolgreich gelöscht.');
     } catch (error) {
       console.error('Error deleting fuel entry:', error);
-      Alert.alert('Fehler', 'Beim Löschen des Tankstopps ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
-  };
+  });
 
   const resetNewFuelEntry = () => {
     setNewFuelEntry({
@@ -211,7 +214,7 @@ export default function FuelScreen() {
     if (Platform.OS !== 'web') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Fehler', 'Wir benötigen die Berechtigung, um auf Ihre Fotos zuzugreifen.');
+        showMessage('Fehler', 'Wir benötigen die Berechtigung, um auf Ihre Fotos zuzugreifen.');
         return;
       }
     }
@@ -241,6 +244,7 @@ export default function FuelScreen() {
 
   const renderFuelItem = ({ item }) => (
     <TouchableOpacity style={styles.fuelItem} onPress={() => openEditModal(item)}>
+      <Text style={{ color: '#666', padding: 8 }}>{vehicleName(item)}</Text>
       <View style={styles.fuelHeader}>
         <View style={styles.dateContainer}>
           <Calendar size={16} color="#666" />
@@ -315,7 +319,8 @@ export default function FuelScreen() {
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={styles.deleteButton}
+            disabled={isSaving}
+                style={styles.deleteButton}
             onPress={() => openDeleteModal(item)}
           >
             <Trash2 size={16} color="#D32F2F" />
@@ -457,6 +462,9 @@ export default function FuelScreen() {
 
   return (
     <View style={styles.container}>
+      <VehicleSelect vehicles={vehicles} value={scope} onChange={setScope} filter disabled={isSaving} />
+      {isSaving ? <Text accessibilityLiveRegion="polite" style={{ padding: 8 }}>Speichert …</Text> : null}
+
       <View style={styles.header}>
         <Text style={styles.title}>Tankstopps</Text>
         <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
@@ -534,13 +542,14 @@ export default function FuelScreen() {
         visible={showAddModal}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowAddModal(false)}
+        onRequestClose={() => { if (!isSaving) setShowAddModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Neuen Tankstopp hinzufügen</Text>
               <TouchableOpacity 
+                disabled={isSaving}
                 style={styles.closeButton}
                 onPress={() => {
                   setShowAddModal(false);
@@ -551,11 +560,15 @@ export default function FuelScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalContent}>
+            <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
+              {isSaving ? <Text accessibilityLiveRegion="polite" style={{ padding: 12 }}>Speichert …</Text> : null}
+
+              <VehicleSelect vehicles={vehicles} value={newRecordVehicleId} onChange={setNewVehicleId} disabled={isSaving} />
               {renderFuelForm(false)}
 
               <TouchableOpacity 
-                style={styles.saveButton}
+                disabled={isSaving}
+                style={[styles.saveButton, isSaving && { opacity: 0.5 }]}
                 onPress={handleAddFuelEntry}
               >
                 <Save color="#FFF" size={20} />
@@ -571,13 +584,14 @@ export default function FuelScreen() {
         visible={showEditModal}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowEditModal(false)}
+        onRequestClose={() => { if (!isSaving) setShowEditModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Tankstopp bearbeiten</Text>
               <TouchableOpacity 
+                disabled={isSaving}
                 style={styles.closeButton}
                 onPress={() => {
                   setShowEditModal(false);
@@ -588,11 +602,15 @@ export default function FuelScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalContent}>
+            <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
+              {isSaving ? <Text accessibilityLiveRegion="polite" style={{ padding: 12 }}>Speichert …</Text> : null}
+
+              <VehicleSelect vehicles={vehicles} value={currentFuelEntry?.vehicleId} onChange={vehicleId => setCurrentFuelEntry({...currentFuelEntry, vehicleId})} disabled={isSaving} />
               {currentFuelEntry && renderFuelForm(true)}
 
               <TouchableOpacity 
-                style={styles.saveButton}
+                disabled={isSaving}
+                style={[styles.saveButton, isSaving && { opacity: 0.5 }]}
                 onPress={handleEditFuelEntry}
               >
                 <Save color="#FFF" size={20} />
@@ -608,7 +626,7 @@ export default function FuelScreen() {
         visible={showDeleteModal}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowDeleteModal(false)}
+        onRequestClose={() => { if (!isSaving) setShowDeleteModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.confirmModalContainer}>

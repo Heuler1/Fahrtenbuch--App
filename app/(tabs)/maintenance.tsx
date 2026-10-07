@@ -1,9 +1,13 @@
+import { useFocusEffect } from 'expo-router';
+import VehicleSelect from '../../components/VehicleSelect';
+import { useRecordVehicles } from '../../hooks/useRecordVehicles';
+import { showMessage, errorMessage } from '../../utils/showMessage';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, Modal, TextInput, ScrollView, Platform, Alert } from 'react-native';
 import { Plus, Calendar, Wrench, Banknote, FileText, ChevronRight, Tag, Clock, X, Save, Trash2, CreditCard as Edit, Camera, ChevronDown, ChevronUp } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import CostChart from '../../components/CostChart';
-import { getMaintenanceEntries, setMaintenanceEntries, generateId, getTodayFormatted } from '../../utils/storage';
+import { getMaintenanceEntries, addMaintenanceEntry, updateMaintenanceEntry, deleteMaintenanceEntry, getTodayFormatted } from '../../utils/storage';
 
 export default function MaintenanceScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
@@ -26,10 +30,12 @@ export default function MaintenanceScreen() {
     receiptImage: ''
   });
   
-  const [maintenanceEntries, setMaintenanceEntriesState] = useState([]);
+  const [allMaintenanceEntries, setMaintenanceEntriesState] = useState([]);
+  const { vehicles, scope, setScope, newRecordVehicleId, setNewVehicleId, matchesVehicle, vehicleName, isSaving, runMutation } = useRecordVehicles();
+  const maintenanceEntries = allMaintenanceEntries.filter(matchesVehicle);
 
   // Load maintenance entries from storage
-  useEffect(() => {
+  useFocusEffect(React.useCallback(() => {
     const loadEntries = async () => {
       try {
         setIsLoading(true);
@@ -39,21 +45,21 @@ export default function MaintenanceScreen() {
         }
       } catch (error) {
         console.error('Error loading maintenance entries:', error);
-        Alert.alert('Fehler', 'Beim Laden der Wartungseinträge ist ein Fehler aufgetreten.');
+        showMessage('Fehler', errorMessage(error));
       } finally {
         setIsLoading(false);
       }
     };
     loadEntries();
-  }, []);
+  }, []));
 
   const [selectedType, setSelectedType] = useState('Alle');
   const maintenanceTypes = ['Alle', 'Wartung', 'Reparatur', 'Ersatzteile', 'Zubehör'];
 
-  const handleAddMaintenanceEntry = async () => {
+  const handleAddMaintenanceEntry = () => runMutation(async () => {
     // Validate required fields
     if (!newMaintenanceEntry.date || !newMaintenanceEntry.title || !newMaintenanceEntry.cost || !newMaintenanceEntry.mileage) {
-      Alert.alert('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
+      showMessage('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
       return;
     }
 
@@ -62,16 +68,16 @@ export default function MaintenanceScreen() {
     const mileage = parseInt(newMaintenanceEntry.mileage);
     
     if (isNaN(cost) || cost < 0) {
-      Alert.alert('Fehler', 'Bitte geben Sie gültige Kosten ein.');
+      showMessage('Fehler', 'Bitte geben Sie gültige Kosten ein.');
       return;
     }
     
     if (isNaN(mileage) || mileage < 0) {
-      Alert.alert('Fehler', 'Bitte geben Sie einen gültigen Kilometerstand ein.');
+      showMessage('Fehler', 'Bitte geben Sie einen gültigen Kilometerstand ein.');
       return;
     }
     const maintenanceEntryToAdd = {
-      id: generateId(),
+      vehicleId: newRecordVehicleId,
       date: newMaintenanceEntry.date,
       type: newMaintenanceEntry.type,
       title: newMaintenanceEntry.title,
@@ -84,22 +90,21 @@ export default function MaintenanceScreen() {
     };
 
     try {
-      const updatedEntries = [maintenanceEntryToAdd, ...maintenanceEntries];
-      await setMaintenanceEntries(updatedEntries);
-      setMaintenanceEntriesState(updatedEntries);
+      const saved = await addMaintenanceEntry(maintenanceEntryToAdd);
+      setMaintenanceEntriesState(previous => [saved, ...previous]);
       setShowAddModal(false);
       resetNewMaintenanceEntry();
-      Alert.alert('Erfolg', 'Eintrag wurde erfolgreich hinzugefügt.');
+      showMessage('Erfolg', 'Eintrag wurde erfolgreich hinzugefügt.');
     } catch (error) {
       console.error('Error adding maintenance entry:', error);
-      Alert.alert('Fehler', 'Beim Hinzufügen des Eintrags ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
-  };
+  });
 
-  const handleEditMaintenanceEntry = async () => {
+  const handleEditMaintenanceEntry = () => runMutation(async () => {
     // Validate required fields
-    if (!currentMaintenanceEntry.date || !currentMaintenanceEntry.title || !currentMaintenanceEntry.cost || !currentMaintenanceEntry.mileage) {
-      Alert.alert('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
+    if (!currentMaintenanceEntry.date || !currentMaintenanceEntry.title || (currentMaintenanceEntry.cost === null || currentMaintenanceEntry.cost === undefined || currentMaintenanceEntry.cost === '') || (currentMaintenanceEntry.mileage === null || currentMaintenanceEntry.mileage === undefined || currentMaintenanceEntry.mileage === '')) {
+      showMessage('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
       return;
     }
 
@@ -112,33 +117,31 @@ export default function MaintenanceScreen() {
     };
 
     try {
-      const updatedEntries = maintenanceEntries.map(entry => entry.id === currentMaintenanceEntry.id ? updatedEntry : entry);
-      await setMaintenanceEntries(updatedEntries);
-      setMaintenanceEntriesState(updatedEntries);
+      const saved = await updateMaintenanceEntry(updatedEntry);
+      setMaintenanceEntriesState(previous => previous.map(entry => entry.id === saved.id ? saved : entry));
       setShowEditModal(false);
       setCurrentMaintenanceEntry(null);
-      Alert.alert('Erfolg', 'Eintrag wurde erfolgreich aktualisiert.');
+      showMessage('Erfolg', 'Eintrag wurde erfolgreich aktualisiert.');
     } catch (error) {
       console.error('Error editing maintenance entry:', error);
-      Alert.alert('Fehler', 'Beim Bearbeiten des Eintrags ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
-  };
+  });
 
-  const handleDeleteMaintenanceEntry = async () => {
+  const handleDeleteMaintenanceEntry = () => runMutation(async () => {
     if (!currentMaintenanceEntry) return;
     
     try {
-      const updatedEntries = maintenanceEntries.filter(entry => entry.id !== currentMaintenanceEntry.id);
-      await setMaintenanceEntries(updatedEntries);
-      setMaintenanceEntriesState(updatedEntries);
+      await deleteMaintenanceEntry(currentMaintenanceEntry);
+      setMaintenanceEntriesState(previous => previous.filter(entry => entry.id !== currentMaintenanceEntry.id));
       setShowDeleteModal(false);
       setCurrentMaintenanceEntry(null);
-      Alert.alert('Erfolg', 'Eintrag wurde erfolgreich gelöscht.');
+      showMessage('Erfolg', 'Eintrag wurde erfolgreich gelöscht.');
     } catch (error) {
       console.error('Error deleting maintenance entry:', error);
-      Alert.alert('Fehler', 'Beim Löschen des Eintrags ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
-  };
+  });
 
   const resetNewMaintenanceEntry = () => {
     setNewMaintenanceEntry({
@@ -208,7 +211,7 @@ export default function MaintenanceScreen() {
     if (Platform.OS !== 'web') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Fehler', 'Wir benötigen die Berechtigung, um auf Ihre Fotos zuzugreifen.');
+        showMessage('Fehler', 'Wir benötigen die Berechtigung, um auf Ihre Fotos zuzugreifen.');
         return;
       }
     }
@@ -275,6 +278,7 @@ export default function MaintenanceScreen() {
 
   const renderMaintenanceItem = ({ item }) => (
     <TouchableOpacity style={styles.maintenanceItem} onPress={() => openEditModal(item)}>
+      <Text style={{ color: '#666', padding: 8 }}>{vehicleName(item)}</Text>
       <View style={styles.maintenanceHeader}>
         <View style={styles.dateContainer}>
           <Calendar size={16} color="#666" />
@@ -348,7 +352,8 @@ export default function MaintenanceScreen() {
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={styles.deleteButton}
+            disabled={isSaving}
+                style={styles.deleteButton}
             onPress={() => openDeleteModal(item)}
           >
             <Trash2 size={16} color="#D32F2F" />
@@ -533,6 +538,9 @@ export default function MaintenanceScreen() {
 
   return (
     <View style={styles.container}>
+      <VehicleSelect vehicles={vehicles} value={scope} onChange={setScope} filter disabled={isSaving} />
+      {isSaving ? <Text accessibilityLiveRegion="polite" style={{ padding: 8 }}>Speichert …</Text> : null}
+
       <View style={styles.header}>
         <Text style={styles.title}>Wartung & Reparaturen</Text>
         <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
@@ -618,13 +626,14 @@ export default function MaintenanceScreen() {
         visible={showAddModal}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowAddModal(false)}
+        onRequestClose={() => { if (!isSaving) setShowAddModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Neuen Eintrag hinzufügen</Text>
               <TouchableOpacity 
+                disabled={isSaving}
                 style={styles.closeButton}
                 onPress={() => {
                   setShowAddModal(false);
@@ -635,11 +644,15 @@ export default function MaintenanceScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalContent}>
+            <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
+              {isSaving ? <Text accessibilityLiveRegion="polite" style={{ padding: 12 }}>Speichert …</Text> : null}
+
+              <VehicleSelect vehicles={vehicles} value={newRecordVehicleId} onChange={setNewVehicleId} disabled={isSaving} />
               {renderMaintenanceForm(false)}
 
               <TouchableOpacity 
-                style={styles.saveButton}
+                disabled={isSaving}
+                style={[styles.saveButton, isSaving && { opacity: 0.5 }]}
                 onPress={handleAddMaintenanceEntry}
               >
                 <Save color="#FFF" size={20} />
@@ -655,13 +668,14 @@ export default function MaintenanceScreen() {
         visible={showEditModal}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowEditModal(false)}
+        onRequestClose={() => { if (!isSaving) setShowEditModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Eintrag bearbeiten</Text>
               <TouchableOpacity 
+                disabled={isSaving}
                 style={styles.closeButton}
                 onPress={() => {
                   setShowEditModal(false);
@@ -672,11 +686,15 @@ export default function MaintenanceScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalContent}>
+            <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
+              {isSaving ? <Text accessibilityLiveRegion="polite" style={{ padding: 12 }}>Speichert …</Text> : null}
+
+              <VehicleSelect vehicles={vehicles} value={currentMaintenanceEntry?.vehicleId} onChange={vehicleId => setCurrentMaintenanceEntry({...currentMaintenanceEntry, vehicleId})} disabled={isSaving} />
               {currentMaintenanceEntry && renderMaintenanceForm(true)}
 
               <TouchableOpacity 
-                style={styles.saveButton}
+                disabled={isSaving}
+                style={[styles.saveButton, isSaving && { opacity: 0.5 }]}
                 onPress={handleEditMaintenanceEntry}
               >
                 <Save color="#FFF" size={20} />
@@ -692,7 +710,7 @@ export default function MaintenanceScreen() {
         visible={showDeleteModal}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowDeleteModal(false)}
+        onRequestClose={() => { if (!isSaving) setShowDeleteModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.confirmModalContainer}>

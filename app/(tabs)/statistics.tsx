@@ -1,3 +1,6 @@
+import { useFocusEffect } from 'expo-router';
+import VehicleSelect from '../../components/VehicleSelect';
+import { useRecordVehicles } from '../../hooks/useRecordVehicles';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { ChartBar as BarChart3, TrendingUp, Calendar, Fuel, Wrench, DollarSign, ChevronDown, ChevronUp, Car } from 'lucide-react-native';
@@ -23,30 +26,25 @@ export default function StatisticsScreen() {
   const [showCategoryChart, setShowCategoryChart] = useState(true);
   const [showMileageChart, setShowMileageChart] = useState(true);
   
-  const [currentVehicle, setCurrentVehicle] = useState(null);
-  const [fuelEntries, setFuelEntries] = useState([]);
-  const [trips, setTrips] = useState([]);
-  const [maintenanceEntries, setMaintenanceEntries] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
+  const { vehicles, scope, setScope, matchesVehicle } = useRecordVehicles();
+  const currentVehicle = vehicles.find(vehicle => vehicle.id === scope) || null;
+  const scopeLabel = currentVehicle?.name || (scope === 'unassigned' ? 'Ohne Fahrzeugzuordnung' : 'Alle Fahrzeuge');
+  const [allFuelEntries, setFuelEntries] = useState([]);
+  const fuelEntries = allFuelEntries.filter(matchesVehicle);
+  const [allTrips, setTrips] = useState([]);
+  const trips = allTrips.filter(matchesVehicle);
+  const [allMaintenanceEntries, setMaintenanceEntries] = useState([]);
+  const maintenanceEntries = allMaintenanceEntries.filter(matchesVehicle);
+
   const [isLoading, setIsLoading] = useState(true);
   
   // Load data from storage
-  useEffect(() => {
+  useFocusEffect(React.useCallback(() => {
     const loadData = async () => {
       try {
         setIsLoading(true);
         
         try {
-          // Load current vehicle
-          const vehicle = await getCurrentVehicle();
-          setCurrentVehicle(vehicle);
-          
-          // Load all vehicles
-          const allVehicles = await getVehicles();
-          if (allVehicles) {
-            setVehicles(allVehicles);
-          }
-          
           // Load fuel entries, trips, and maintenance entries
           const allFuelEntries = await getFuelEntries();
           const allTrips = await getTrips();
@@ -61,7 +59,7 @@ export default function StatisticsScreen() {
           setFuelEntries([]);
           setTrips([]);
           setMaintenanceEntries([]);
-          setCurrentVehicle(null);
+
         }
       } catch (error) {
         console.error('Error loading data:', error);
@@ -71,7 +69,7 @@ export default function StatisticsScreen() {
     };
     
     loadData();
-  }, []);
+  }, []));
   
   // Calculate statistics based on the selected period
   const getFilteredData = () => {
@@ -111,9 +109,9 @@ export default function StatisticsScreen() {
     };
     
     // Filter data based on date
-    const filteredFuelEntries = fuelEntries.filter(entry => entry && entry.date && isAfterStartDate(entry.date));
-    const filteredTrips = trips.filter(trip => trip && trip.date && isAfterStartDate(trip.date));
-    const filteredMaintenanceEntries = maintenanceEntries.filter(entry => entry && entry.date && isAfterStartDate(entry.date));
+    const filteredFuelEntries = fuelEntries.filter(entry => entry && matchesVehicle(entry) && entry.date && isAfterStartDate(entry.date));
+    const filteredTrips = trips.filter(trip => trip && matchesVehicle(trip) && trip.date && isAfterStartDate(trip.date));
+    const filteredMaintenanceEntries = maintenanceEntries.filter(entry => entry && matchesVehicle(entry) && entry.date && isAfterStartDate(entry.date));
     
     return {
       fuelEntries: filteredFuelEntries,
@@ -275,7 +273,7 @@ export default function StatisticsScreen() {
   const handleExportStatistics = async () => {
     try {
       const statisticsData = {
-        vehicleName: currentVehicle ? currentVehicle.name : 'Unbekanntes Fahrzeug',
+        vehicleName: scopeLabel,
         period: selectedPeriod === 'month' ? 'Letzter Monat' : 
                 selectedPeriod === 'quarter' ? 'Letztes Quartal' : 
                 selectedPeriod === 'year' ? 'Letztes Jahr' : 'Gesamtzeitraum',
@@ -326,6 +324,8 @@ export default function StatisticsScreen() {
 
   return (
     <ScrollView style={styles.container}>
+
+      <VehicleSelect vehicles={vehicles} value={scope} onChange={setScope} filter />
       <View style={styles.header}>
         <Text style={styles.title}>Statistiken</Text>
         {currentVehicle && (
@@ -599,7 +599,7 @@ export default function StatisticsScreen() {
       
       <View style={styles.footer}>
         <Text style={styles.footerText}>
-          {currentVehicle ? `Daten für ${currentVehicle.name}` : 'Fahrzeugdaten werden geladen...'}
+          {`Daten für ${scopeLabel}`}
         </Text>
       </View>
     </ScrollView>

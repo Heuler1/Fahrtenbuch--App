@@ -1,8 +1,12 @@
+import { useFocusEffect } from 'expo-router';
+import VehicleSelect from '../../components/VehicleSelect';
+import { useRecordVehicles } from '../../hooks/useRecordVehicles';
+import { showMessage, errorMessage } from '../../utils/showMessage';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, FlatList, Modal, Platform, Alert } from 'react-native';
 import { Plus, MapPin, Calendar, Navigation, Clock, Tag, ChevronRight, Search, X, Save, Trash2, CreditCard as Edit, Download } from 'lucide-react-native';
 import { exportTripsPdf } from '../../utils/pdfExport';
-import { getTrips, setTrips, generateId, getTodayFormatted, sortDatesDESC, getCurrentVehicle } from '../../utils/storage';
+import { getTrips, addTrip, updateTrip, deleteTrip, getTodayFormatted, sortDatesDESC } from '../../utils/storage';
 
 export default function LogbookScreen() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -25,18 +29,17 @@ export default function LogbookScreen() {
     weather: ''
   });
   
-  const [trips, setTripsState] = useState([]);
-  const [currentVehicle, setCurrentVehicle] = useState(null);
+  const [allTrips, setTripsState] = useState([]);
+  const { vehicles, scope, setScope, newRecordVehicleId, setNewVehicleId, matchesVehicle, vehicleName, isSaving, runMutation } = useRecordVehicles();
+  const trips = allTrips.filter(matchesVehicle);
+  const currentVehicle = vehicles.find(vehicle => vehicle.id === scope) || null;
 
   // Load trips from storage
-  useEffect(() => {
+  useFocusEffect(React.useCallback(() => {
     const loadTrips = async () => {
       try {
         setIsLoading(true);
-        const [loadedTrips, vehicle] = await Promise.all([
-          getTrips(),
-          getCurrentVehicle(),
-        ]);
+        const loadedTrips = await getTrips();
         if (loadedTrips) {
           const sortedTrips = loadedTrips.sort((a, b) => {
             const dateA = a.date.split('.').reverse().join('');
@@ -45,19 +48,17 @@ export default function LogbookScreen() {
           });
           setTripsState(sortedTrips);
         }
-        if (vehicle) {
-          setCurrentVehicle(vehicle);
-        }
+
       } catch (error) {
         console.error('Error loading trips:', error);
-        Alert.alert('Fehler', 'Beim Laden der Fahrten ist ein Fehler aufgetreten.');
+        showMessage('Fehler', errorMessage(error));
       } finally {
         setIsLoading(false);
       }
     };
 
     loadTrips();
-  }, []);
+  }, []));
 
   const [selectedCategory, setSelectedCategory] = useState('Alle');
   const categories = ['Alle', 'Freizeit', 'Geschäftlich', 'Oldtimertreffen', 'Ausstellung'];
@@ -91,10 +92,10 @@ export default function LogbookScreen() {
     }
   };
 
-  const handleAddTrip = async () => {
+  const handleAddTrip = () => runMutation(async () => {
     // Validate required fields
     if (!newTrip.date || !newTrip.start || !newTrip.destination || !newTrip.startMileage || !newTrip.endMileage) {
-      Alert.alert('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
+      showMessage('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
       return;
     }
 
@@ -103,17 +104,17 @@ export default function LogbookScreen() {
     const endMileage = parseInt(newTrip.endMileage);
     
     if (isNaN(startMileage) || startMileage < 0) {
-      Alert.alert('Fehler', 'Bitte geben Sie einen gültigen Start-Kilometerstand ein.');
+      showMessage('Fehler', 'Bitte geben Sie einen gültigen Start-Kilometerstand ein.');
       return;
     }
     
     if (isNaN(endMileage) || endMileage < 0) {
-      Alert.alert('Fehler', 'Bitte geben Sie einen gültigen End-Kilometerstand ein.');
+      showMessage('Fehler', 'Bitte geben Sie einen gültigen End-Kilometerstand ein.');
       return;
     }
     
     if (endMileage <= startMileage) {
-      Alert.alert('Fehler', 'Der End-Kilometerstand muss höher als der Start-Kilometerstand sein.');
+      showMessage('Fehler', 'Der End-Kilometerstand muss höher als der Start-Kilometerstand sein.');
       return;
     }
     try {
@@ -121,7 +122,7 @@ export default function LogbookScreen() {
       const distance = newTrip.distance ? parseInt(newTrip.distance) : (endMileage - startMileage);
 
       const tripToAdd = {
-        id: generateId(),
+        vehicleId: newRecordVehicleId,
         date: newTrip.date,
         start: newTrip.start,
         destination: newTrip.destination,
@@ -133,24 +134,23 @@ export default function LogbookScreen() {
         weather: newTrip.weather || 'Keine Angabe'
       };
 
-      const updatedTrips = [tripToAdd, ...trips];
-      await setTrips(updatedTrips);
-      setTripsState(updatedTrips);
+      const saved = await addTrip(tripToAdd);
+      setTripsState(previous => [saved, ...previous]);
       
       setShowAddModal(false);
       resetNewTrip();
       
-      Alert.alert('Erfolg', 'Fahrt wurde erfolgreich hinzugefügt.');
+      showMessage('Erfolg', 'Fahrt wurde erfolgreich hinzugefügt.');
     } catch (error) {
       console.error('Error adding trip:', error);
-      Alert.alert('Fehler', 'Beim Hinzufügen der Fahrt ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
-  };
+  });
 
-  const handleEditTrip = async () => {
+  const handleEditTrip = () => runMutation(async () => {
     // Validate required fields
-    if (!currentTrip.date || !currentTrip.start || !currentTrip.destination || !currentTrip.startMileage || !currentTrip.endMileage) {
-      Alert.alert('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
+    if (!currentTrip.date || !currentTrip.start || !currentTrip.destination || (currentTrip.startMileage === null || currentTrip.startMileage === undefined || currentTrip.startMileage === '') || (currentTrip.endMileage === null || currentTrip.endMileage === undefined || currentTrip.endMileage === '')) {
+      showMessage('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
       return;
     }
 
@@ -168,37 +168,35 @@ export default function LogbookScreen() {
         weather: currentTrip.weather || 'Keine Angabe'
       };
 
-      const updatedTrips = trips.map(trip => trip.id === currentTrip.id ? updatedTrip : trip);
-      await setTrips(updatedTrips);
-      setTripsState(updatedTrips);
+      const saved = await updateTrip(updatedTrip);
+      setTripsState(previous => previous.map(entry => entry.id === saved.id ? saved : entry));
       
       setShowEditModal(false);
       setCurrentTrip(null);
       
-      Alert.alert('Erfolg', 'Fahrt wurde erfolgreich aktualisiert.');
+      showMessage('Erfolg', 'Fahrt wurde erfolgreich aktualisiert.');
     } catch (error) {
       console.error('Error editing trip:', error);
-      Alert.alert('Fehler', 'Beim Bearbeiten der Fahrt ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
-  };
+  });
 
-  const handleDeleteTrip = async () => {
+  const handleDeleteTrip = () => runMutation(async () => {
     if (!currentTrip) return;
     
     try {
-      const updatedTrips = trips.filter(trip => trip.id !== currentTrip.id);
-      await setTrips(updatedTrips);
-      setTripsState(updatedTrips);
+      await deleteTrip(currentTrip);
+      setTripsState(previous => previous.filter(entry => entry.id !== currentTrip.id));
       
       setShowDeleteModal(false);
       setCurrentTrip(null);
       
-      Alert.alert('Erfolg', 'Fahrt wurde erfolgreich gelöscht.');
+      showMessage('Erfolg', 'Fahrt wurde erfolgreich gelöscht.');
     } catch (error) {
       console.error('Error deleting trip:', error);
-      Alert.alert('Fehler', 'Beim Löschen der Fahrt ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
-  };
+  });
 
   const resetNewTrip = () => {
     setNewTrip({
@@ -225,6 +223,7 @@ export default function LogbookScreen() {
   };
 
   const handleExportPDF = async (exportType) => {
+    if (!currentVehicle) { showMessage('Fahrzeug auswählen', 'Bitte vor dem PDF-Export genau ein Fahrzeug im Fahrzeugfilter auswählen.'); return; }
     try {
       let tripsToExport = filteredTrips;
 
@@ -252,15 +251,16 @@ export default function LogbookScreen() {
       
       await exportTripsPdf(tripsToExport, options);
       setShowExportModal(false);
-      Alert.alert('PDF bereit', 'Der Druck- oder Teilen-Dialog wurde geöffnet. Bitte schließen Sie dort das Speichern ab.');
+      showMessage('PDF bereit', 'Der Druck- oder Teilen-Dialog wurde geöffnet. Bitte schließen Sie dort das Speichern ab.');
     } catch (error) {
       console.error('Error exporting trips PDF:', error);
-      Alert.alert('Fehler', 'Beim Exportieren des Fahrtenbuchs ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
   };
 
   const renderTripItem = ({ item }) => (
     <TouchableOpacity style={styles.tripItem} onPress={() => openEditModal(item)}>
+      <Text style={{ color: '#666', padding: 8 }}>{vehicleName(item)}</Text>
       <View style={styles.tripHeader}>
         <View style={styles.dateContainer}>
           <Calendar size={16} color="#666" />
@@ -311,7 +311,8 @@ export default function LogbookScreen() {
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={styles.deleteButton}
+            disabled={isSaving}
+                style={styles.deleteButton}
             onPress={() => openDeleteModal(item)}
           >
             <Trash2 size={16} color="#D32F2F" />
@@ -443,6 +444,9 @@ export default function LogbookScreen() {
 
   return (
     <View style={styles.container}>
+      <VehicleSelect vehicles={vehicles} value={scope} onChange={setScope} filter disabled={isSaving} />
+      {isSaving ? <Text accessibilityLiveRegion="polite" style={{ padding: 8 }}>Speichert …</Text> : null}
+
       <View style={styles.header}>
         <Text style={styles.title}>Fahrtenbuch</Text>
         <View style={styles.headerButtons}>
@@ -536,13 +540,14 @@ export default function LogbookScreen() {
         visible={showAddModal}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowAddModal(false)}
+        onRequestClose={() => { if (!isSaving) setShowAddModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Neue Fahrt hinzufügen</Text>
               <TouchableOpacity 
+                disabled={isSaving}
                 style={styles.closeButton}
                 onPress={() => {
                   setShowAddModal(false);
@@ -553,11 +558,15 @@ export default function LogbookScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalContent}>
+            <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
+              {isSaving ? <Text accessibilityLiveRegion="polite" style={{ padding: 12 }}>Speichert …</Text> : null}
+
+              <VehicleSelect vehicles={vehicles} value={newRecordVehicleId} onChange={setNewVehicleId} disabled={isSaving} />
               {renderTripForm(false)}
 
               <TouchableOpacity 
-                style={styles.saveButton}
+                disabled={isSaving}
+                style={[styles.saveButton, isSaving && { opacity: 0.5 }]}
                 onPress={handleAddTrip}
               >
                 <Save color="#FFF" size={20} />
@@ -573,13 +582,14 @@ export default function LogbookScreen() {
         visible={showEditModal}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowEditModal(false)}
+        onRequestClose={() => { if (!isSaving) setShowEditModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Fahrt bearbeiten</Text>
               <TouchableOpacity 
+                disabled={isSaving}
                 style={styles.closeButton}
                 onPress={() => {
                   setShowEditModal(false);
@@ -590,11 +600,15 @@ export default function LogbookScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalContent}>
+            <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
+              {isSaving ? <Text accessibilityLiveRegion="polite" style={{ padding: 12 }}>Speichert …</Text> : null}
+
+              <VehicleSelect vehicles={vehicles} value={currentTrip?.vehicleId} onChange={vehicleId => setCurrentTrip({...currentTrip, vehicleId})} disabled={isSaving} />
               {currentTrip && renderTripForm(true)}
 
               <TouchableOpacity 
-                style={styles.saveButton}
+                disabled={isSaving}
+                style={[styles.saveButton, isSaving && { opacity: 0.5 }]}
                 onPress={handleEditTrip}
               >
                 <Save color="#FFF" size={20} />
@@ -610,7 +624,7 @@ export default function LogbookScreen() {
         visible={showDeleteModal}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowDeleteModal(false)}
+        onRequestClose={() => { if (!isSaving) setShowDeleteModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.confirmModalContainer}>
@@ -650,13 +664,14 @@ export default function LogbookScreen() {
         visible={showExportModal}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowExportModal(false)}
+        onRequestClose={() => { if (!isSaving) setShowExportModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.exportModalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Fahrtenbuch exportieren</Text>
               <TouchableOpacity 
+                disabled={isSaving}
                 style={styles.closeButton}
                 onPress={() => setShowExportModal(false)}
               >

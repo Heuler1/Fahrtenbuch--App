@@ -4,6 +4,7 @@ export const normalizeVehicle = (raw) => {
   if (!raw) return null;
   return {
     id: raw.id,
+    updatedAt: raw.updated_at ?? raw.updatedAt ?? null,
     name: raw.name || '',
     year: raw.year ?? '',
     licensePlate: raw.license_plate ?? raw.licensePlate ?? '',
@@ -82,6 +83,7 @@ export const normalizeFuelEntry = (raw) => {
   if (!raw) return null;
   return {
     id: raw.id,
+    updatedAt: raw.updated_at ?? raw.updatedAt ?? null,
     date: raw.date || '',
     station: raw.station || '',
     location: raw.location || '',
@@ -100,6 +102,7 @@ export const normalizeTrip = (raw) => {
   if (!raw) return null;
   return {
     id: raw.id,
+    updatedAt: raw.updated_at ?? raw.updatedAt ?? null,
     date: raw.date || '',
     start: raw.start_location ?? raw.start ?? '',
     destination: raw.destination || '',
@@ -118,6 +121,7 @@ export const normalizeMaintenanceEntry = (raw) => {
   if (!raw) return null;
   return {
     id: raw.id,
+    updatedAt: raw.updated_at ?? raw.updatedAt ?? null,
     date: raw.date || '',
     type: raw.type || 'Wartung',
     title: raw.title || '',
@@ -136,6 +140,7 @@ export const normalizeReminder = (raw) => {
   if (!raw) return null;
   return {
     id: raw.id,
+    updatedAt: raw.updated_at ?? raw.updatedAt ?? null,
     title: raw.title || '',
     date: raw.date || '',
     type: raw.type || 'inspection',
@@ -146,3 +151,4 @@ export const normalizeReminder = (raw) => {
     vehicleId: raw.vehicle_id ?? raw.vehicleId ?? null,
   };
 };
+

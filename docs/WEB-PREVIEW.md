@@ -13,4 +13,4 @@ Erwartete Adresse nach erfolgreichem Deployment: https://heuler1.github.io/Fahrt
 
 Supabase muss aktiv und erreichbar sein. In Supabase Authentication → URL Configuration die Testadresse als Site URL bzw. erlaubte Redirect URL für diese Testumgebung hinterlegen, damit E-Mail-Bestätigungen nicht auf eine alte Adresse führen. Bestehende produktive Redirects beibehalten.
 
-Die Oberfläche ist eine öffentliche Web-Testversion mit Anmeldung. Nur Testdaten verwenden: die offenen Risiken bei Listen-Speicherung aus RELEASE-READINESS.md sind noch nicht behoben. Der Web-Build allein bestätigt keine funktionierende Anmeldung oder Datenbankverbindung.
+Die Oberfläche ist eine öffentliche Web-Testversion mit Anmeldung. Nur Testdaten verwenden: die Einzelspeicherung und Versionsprüfung sind implementiert, der angemeldete Mehrgeräte-Test und die serverseitige Absicherung der Fahrzeugzuordnung aus RELEASE-READINESS.md stehen noch aus. Der Web-Build allein bestätigt keine funktionierende Anmeldung oder Datenbankverbindung.
