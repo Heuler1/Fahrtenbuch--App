@@ -677,7 +677,7 @@ export default function LogbookScreen() {
 
             <View style={styles.exportOptions}>
               <Text style={styles.exportDescription}>
-                Wählen Sie den gewünschten Export-Typ für behördliche Nachweise:
+                Wählen Sie die Fahrten für Ihren PDF-Export:
               </Text>
               
               <TouchableOpacity 
@@ -705,7 +705,7 @@ export default function LogbookScreen() {
 
             <View style={styles.exportNote}>
               <Text style={styles.exportNoteText}>
-                Das PDF wird automatisch in Ihren Downloads gespeichert und kann direkt an Behörden weitergeleitet werden.
+                Nach dem Erstellen öffnet sich der Teilen-Dialog. Dort können Sie die PDF speichern oder an eine andere App weitergeben. Im Browser wählen Sie „Als PDF speichern“ im Druckdialog.
               </Text>
             </View>
           </View>
