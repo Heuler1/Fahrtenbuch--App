@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert, Switch, Modal, Platform } from 'react-native';
+import { validateVehicleForm } from '../../utils/vehicleForm';
+import { inputNumber } from '../../utils/metrics';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert, Switch, Modal, Platform, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Save, Trash2, CreditCard as Edit, Camera, X, Plus, Car } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { getVehicles, updateVehicle, deleteVehicle } from '../../utils/storage';
-import { toSupabaseVehicle } from '../../utils/vehicleUtils';
+import { showMessage, errorMessage } from '../../utils/showMessage';
+import { vehicleChanges } from '../../utils/vehicleUtils';
 
 export default function VehicleScreen() {
   const router = useRouter();
@@ -14,6 +17,10 @@ export default function VehicleScreen() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [vehicle, setVehicle] = useState(null);
+  const originalVehicle = useRef(null);
+  const [saveFeedback, setSaveFeedback] = useState(null);
+  const writeInProgress = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const loadVehicle = async () => {
@@ -25,18 +32,19 @@ export default function VehicleScreen() {
           const foundVehicle = vehicles.find(v => String(v.id) === String(params.id));
 
           if (foundVehicle) {
+            originalVehicle.current = foundVehicle;
             setVehicle(foundVehicle);
           } else {
-            Alert.alert('Fehler', 'Fahrzeug nicht gefunden.');
+            showMessage('Fehler', 'Fahrzeug nicht gefunden.');
             router.back();
           }
         } else {
-          Alert.alert('Fehler', 'Keine Fahrzeug-ID angegeben.');
+          showMessage('Fehler', 'Keine Fahrzeug-ID angegeben.');
           router.back();
         }
       } catch (error) {
         console.error('Error loading vehicle:', error);
-        Alert.alert('Fehler', 'Beim Laden des Fahrzeugs ist ein Fehler aufgetreten.');
+        showMessage('Fehler', 'Beim Laden des Fahrzeugs ist ein Fehler aufgetreten.');
         router.back();
       } finally {
         setIsLoading(false);
@@ -47,27 +55,50 @@ export default function VehicleScreen() {
   }, [params.id]);
 
   const handleSave = async () => {
+    if (writeInProgress.current) return;
+    writeInProgress.current = true;
+    setIsSaving(true);
+    setSaveFeedback(null);
     try {
-      const supabaseUpdates = toSupabaseVehicle(vehicle);
-      await updateVehicle(vehicle.id, supabaseUpdates);
-      Alert.alert('Gespeichert', 'Fahrzeugdaten wurden erfolgreich gespeichert.');
+      const checked = validateVehicleForm(vehicle);
+      checked.purchasePrice = inputNumber(vehicle.purchasePrice || 0, 'Kaufpreis');
+      checked.insurance = { ...vehicle.insurance, cost: inputNumber(vehicle.insurance?.cost || 0, 'Versicherungskosten') };
+      const supabaseUpdates = vehicleChanges(checked, originalVehicle.current);
+      if (!Object.keys(supabaseUpdates).length) {
+        setSaveFeedback({ error: false, text: 'Keine Änderungen vorhanden.' });
+        setIsEditing(false);
+        return;
+      }
+      const saved = await updateVehicle(vehicle.id, supabaseUpdates, vehicle.updatedAt, originalVehicle.current);
+      originalVehicle.current = saved;
+      setVehicle(saved);
+      setSaveFeedback({ error: false, text: 'Fahrzeugdaten gespeichert.' });
       setIsEditing(false);
     } catch (error) {
       console.error('Error saving vehicle:', error);
-      Alert.alert('Fehler', 'Beim Speichern ist ein Fehler aufgetreten.');
+      setSaveFeedback({ error: true, text: errorMessage(error) });
+    } finally {
+      writeInProgress.current = false;
+      setIsSaving(false);
     }
   };
 
   const handleDelete = async () => {
+    if (writeInProgress.current) return;
+    writeInProgress.current = true;
+    setIsSaving(true);
     try {
-      await deleteVehicle(vehicle.id);
+      await deleteVehicle(vehicle.id, vehicle.updatedAt);
       setShowDeleteModal(false);
-      Alert.alert('Gelöscht', 'Fahrzeug wurde erfolgreich gelöscht.');
+      showMessage('Gelöscht', 'Fahrzeug wurde erfolgreich gelöscht.');
       router.replace('/(tabs)/vehicles');
     } catch (error) {
       console.error('Error deleting vehicle:', error);
-      Alert.alert('Fehler', 'Beim Löschen ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
       setShowDeleteModal(false);
+    } finally {
+      writeInProgress.current = false;
+      setIsSaving(false);
     }
   };
 
@@ -76,7 +107,7 @@ export default function VehicleScreen() {
       if (Platform.OS !== 'web') {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Fehler', 'Wir benötigen die Berechtigung, um auf Ihre Fotos zuzugreichen.');
+          showMessage('Fehler', 'Wir benötigen die Berechtigung, um auf Ihre Fotos zuzugreichen.');
           return;
         }
       }
@@ -96,7 +127,7 @@ export default function VehicleScreen() {
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Fehler', 'Beim Auswählen des Bildes ist ein Fehler aufgetreten.');
+      showMessage('Fehler', 'Beim Auswählen des Bildes ist ein Fehler aufgetreten.');
     }
   };
 
@@ -105,7 +136,7 @@ export default function VehicleScreen() {
       if (Platform.OS !== 'web') {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Fehler', 'Wir benötigen die Berechtigung, um auf Ihre Fotos zuzugreichen.');
+          showMessage('Fehler', 'Wir benötigen die Berechtigung, um auf Ihre Fotos zuzugreichen.');
           return;
         }
       }
@@ -125,7 +156,7 @@ export default function VehicleScreen() {
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Fehler', 'Beim Auswählen des Bildes ist ein Fehler aufgetreten.');
+      showMessage('Fehler', 'Beim Auswählen des Bildes ist ein Fehler aufgetreten.');
     }
   };
 
@@ -259,17 +290,24 @@ export default function VehicleScreen() {
         </TouchableOpacity>
         <Text style={styles.title}>Fahrzeugdetails</Text>
         {isEditing ? (
-          <TouchableOpacity onPress={handleSave} style={styles.actionButton}>
-            <Save color="#8B4513" size={24} />
+          <TouchableOpacity disabled={isSaving} onPress={handleSave} style={styles.actionButton}>
+            {isSaving ? <ActivityIndicator color="#8B4513" /> : <Save color="#8B4513" size={24} />}
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.actionButton}>
+          <TouchableOpacity onPress={() => { setSaveFeedback(null); setIsEditing(true); }} style={styles.actionButton}>
             <Edit color="#8B4513" size={24} />
           </TouchableOpacity>
         )}
       </View>
 
-      <ScrollView style={styles.scrollView}>
+      {(isSaving || saveFeedback) && (
+        <View accessibilityLiveRegion="polite" style={{ padding: 12, backgroundColor: saveFeedback?.error ? '#FDE8E8' : '#EDF7ED' }}>
+          <Text style={{ color: saveFeedback?.error ? '#9B1C1C' : '#245C2A' }}>
+            {isSaving ? 'Wird gespeichert … Bitte kurz warten.' : saveFeedback?.text}
+          </Text>
+        </View>
+      )}
+      <ScrollView style={styles.scrollView} pointerEvents={isSaving ? 'none' : 'auto'}>
         <View style={styles.imageContainer}>
           {vehicle.image ? (
             <Image source={{ uri: vehicle.image }} style={styles.vehicleImage} resizeMode="cover" />
@@ -537,7 +575,7 @@ export default function VehicleScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, styles.confirmButton]}
-                onPress={handleDelete}
+                disabled={isSaving} onPress={handleDelete}
               >
                 <Text style={styles.confirmButtonText}>Löschen</Text>
               </TouchableOpacity>
@@ -979,3 +1017,4 @@ const styles = StyleSheet.create({
     color: '#666',
   },
 });
+

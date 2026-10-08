@@ -1,3 +1,6 @@
+import 'react-native-url-polyfill/auto';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
 
 // Supabase configuration from environment variables
@@ -13,8 +16,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true,
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    detectSessionInUrl: Platform.OS === 'web',
+    storage: AsyncStorage,
     storageKey: 'oldtimer-auth',
   },
   global: {
@@ -75,3 +78,4 @@ export const onAuthStateChange = (callback) => {
     callback(event, session);
   });
 };
+

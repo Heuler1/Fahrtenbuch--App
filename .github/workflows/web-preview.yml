@@ -1,0 +1,47 @@
+name: Web preview
+on:
+  push:
+    branches: [playstore-release]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://taembulnsbdbwtdzktgm.supabase.co
+      # Public client key, deliberately bundled into the browser app. Not an admin key.
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_VtErSA_TB-09chsQZWoBsQ_e4q4ahYr
+      GITHUB_PAGES: 'true'
+      EXPO_NO_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:db
+      - run: npx expo export --platform web --max-workers 2
+      - run: node scripts/prepare-pages.cjs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Deploy preview
+        id: deployment
+        uses: actions/deploy-pages@v4

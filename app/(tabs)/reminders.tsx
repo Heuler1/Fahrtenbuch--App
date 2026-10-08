@@ -1,8 +1,12 @@
+import { useFocusEffect } from 'expo-router';
+import VehicleSelect from '../../components/VehicleSelect';
+import { useRecordVehicles } from '../../hooks/useRecordVehicles';
+import { showMessage, errorMessage } from '../../utils/showMessage';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Switch, ScrollView, Modal, TextInput, Platform, Alert } from 'react-native';
 import { Plus, Calendar, Bell, Clock, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle, ChevronRight, X, Save, Trash2, CreditCard as Edit, ChevronDown, ChevronUp } from 'lucide-react-native';
 import ReminderPieChart from '../../components/ReminderPieChart';
-import { getReminders, setReminders, generateId, getTodayFormatted } from '../../utils/storage';
+import { getReminders, addReminder, updateReminder, deleteReminder, getTodayFormatted } from '../../utils/storage';
 
 export default function RemindersScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
@@ -22,10 +26,12 @@ export default function RemindersScreen() {
     priority: 'medium'
   });
   
-  const [reminders, setRemindersState] = useState([]);
+  const [allReminders, setRemindersState] = useState([]);
+  const { vehicles, scope, setScope, newRecordVehicleId, setNewVehicleId, matchesVehicle, vehicleName, isSaving, runMutation } = useRecordVehicles();
+  const reminders = allReminders.filter(matchesVehicle);
 
   // Load reminders from storage
-  useEffect(() => {
+  useFocusEffect(React.useCallback(() => {
     const loadReminders = async () => {
       try {
         setIsLoading(true);
@@ -35,41 +41,40 @@ export default function RemindersScreen() {
         }
       } catch (error) {
         console.error('Error loading reminders:', error);
-        Alert.alert('Fehler', 'Beim Laden der Erinnerungen ist ein Fehler aufgetreten.');
+        showMessage('Fehler', errorMessage(error));
       } finally {
         setIsLoading(false);
       }
     };
 
     loadReminders();
-  }, []);
+  }, []));
 
   const [filterStatus, setFilterStatus] = useState('Alle');
   const [filterCategory, setFilterCategory] = useState('Alle');
 
-  const toggleReminderActive = async (id) => {
+  const toggleReminderActive = (id) => runMutation(async () => {
     try {
-      const updatedReminders = reminders.map(reminder => 
-        reminder.id === id ? {...reminder, active: !reminder.active} : reminder
-      );
-      setRemindersState(updatedReminders);
-      await setReminders(updatedReminders);
+      const entry = reminders.find(reminder => reminder.id === id);
+      if (!entry) return;
+      const saved = await updateReminder({ ...entry, active: !entry.active });
+      setRemindersState(previous => previous.map(reminder => reminder.id === id ? saved : reminder));
     } catch (error) {
       console.error('Error toggling reminder active state:', error);
-      Alert.alert('Fehler', 'Beim Ändern des Status ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
-  };
+  });
 
-  const handleAddReminder = async () => {
+  const handleAddReminder = () => runMutation(async () => {
     // Validate required fields
     if (!newReminder.title || !newReminder.date) {
-      Alert.alert('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
+      showMessage('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
       return;
     }
 
     try {
       const reminderToAdd = {
-        id: generateId(),
+        vehicleId: newRecordVehicleId,
         title: newReminder.title,
         date: newReminder.date,
         type: newReminder.type,
@@ -79,23 +84,22 @@ export default function RemindersScreen() {
         priority: newReminder.priority
       };
 
-      const updatedReminders = [reminderToAdd, ...reminders];
-      setRemindersState(updatedReminders);
-      await setReminders(updatedReminders);
+      const saved = await addReminder(reminderToAdd);
+      setRemindersState(previous => [saved, ...previous]);
       
       setShowAddModal(false);
       resetNewReminder();
       
-      Alert.alert('Erfolg', 'Erinnerung wurde erfolgreich hinzugefügt.');
+      showMessage('Erfolg', 'Erinnerung wurde erfolgreich hinzugefügt.');
     } catch (error) {
       console.error('Error adding reminder:', error);
-      Alert.alert('Fehler', 'Beim Hinzufügen der Erinnerung ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
-  };
+  });
 
-  const handleEditReminder = async () => {
+  const handleEditReminder = () => runMutation(async () => {
     if (!currentReminder.title || !currentReminder.date) {
-      Alert.alert('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
+      showMessage('Fehler', 'Bitte füllen Sie alle Pflichtfelder aus.');
       return;
     }
 
@@ -108,40 +112,35 @@ export default function RemindersScreen() {
           : currentReminder.notifyDays
       };
 
-      const updatedReminders = reminders.map(reminder => 
-        reminder.id === currentReminder.id ? updatedReminder : reminder
-      );
-      
-      setRemindersState(updatedReminders);
-      await setReminders(updatedReminders);
+      const saved = await updateReminder(updatedReminder);
+      setRemindersState(previous => previous.map(entry => entry.id === saved.id ? saved : entry));
       
       setShowEditModal(false);
       setCurrentReminder(null);
       
-      Alert.alert('Erfolg', 'Erinnerung wurde erfolgreich aktualisiert.');
+      showMessage('Erfolg', 'Erinnerung wurde erfolgreich aktualisiert.');
     } catch (error) {
       console.error('Error editing reminder:', error);
-      Alert.alert('Fehler', 'Beim Bearbeiten der Erinnerung ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
-  };
+  });
 
-  const handleDeleteReminder = async () => {
+  const handleDeleteReminder = () => runMutation(async () => {
     if (!currentReminder) return;
     
     try {
-      const updatedReminders = reminders.filter(reminder => reminder.id !== currentReminder.id);
-      setRemindersState(updatedReminders);
-      await setReminders(updatedReminders);
+      await deleteReminder(currentReminder);
+      setRemindersState(previous => previous.filter(entry => entry.id !== currentReminder.id));
       
       setShowDeleteModal(false);
       setCurrentReminder(null);
       
-      Alert.alert('Erfolg', 'Erinnerung wurde erfolgreich gelöscht.');
+      showMessage('Erfolg', 'Erinnerung wurde erfolgreich gelöscht.');
     } catch (error) {
       console.error('Error deleting reminder:', error);
-      Alert.alert('Fehler', 'Beim Löschen der Erinnerung ist ein Fehler aufgetreten.');
+      showMessage('Fehler', errorMessage(error));
     }
-  };
+  });
 
   const resetNewReminder = () => {
     setNewReminder({
@@ -285,6 +284,7 @@ export default function RemindersScreen() {
 
   const renderReminderItem = ({ item }) => (
     <View style={[styles.reminderItem, !item.active && styles.inactiveReminder]}>
+      <Text style={{ color: '#666', padding: 8 }}>{vehicleName(item)}</Text>
       <View style={styles.reminderHeader}>
         <View style={[styles.typeIconContainer, { backgroundColor: getTypeColor(item.type) }]}>
           {getTypeIcon(item.type)}
@@ -330,7 +330,8 @@ export default function RemindersScreen() {
         </TouchableOpacity>
         
         <TouchableOpacity 
-          style={styles.deleteButton}
+          disabled={isSaving}
+                style={styles.deleteButton}
           onPress={() => openDeleteModal(item)}
         >
           <Trash2 size={16} color="#D32F2F" />
@@ -522,6 +523,9 @@ export default function RemindersScreen() {
 
   return (
     <View style={styles.container}>
+      <VehicleSelect vehicles={vehicles} value={scope} onChange={setScope} filter disabled={isSaving} />
+      {isSaving ? <Text accessibilityLiveRegion="polite" style={{ padding: 8 }}>Speichert …</Text> : null}
+
       <View style={styles.header}>
         <Text style={styles.title}>Erinnerungen</Text>
         <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
@@ -641,13 +645,14 @@ export default function RemindersScreen() {
         visible={showAddModal}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowAddModal(false)}
+        onRequestClose={() => { if (!isSaving) setShowAddModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Neue Erinnerung hinzufügen</Text>
               <TouchableOpacity 
+                disabled={isSaving}
                 style={styles.closeButton}
                 onPress={() => {
                   setShowAddModal(false);
@@ -658,11 +663,15 @@ export default function RemindersScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalContent}>
+            <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
+              {isSaving ? <Text accessibilityLiveRegion="polite" style={{ padding: 12 }}>Speichert …</Text> : null}
+
+              <VehicleSelect vehicles={vehicles} value={newRecordVehicleId} onChange={setNewVehicleId} disabled={isSaving} />
               {renderReminderForm(false)}
 
               <TouchableOpacity 
-                style={styles.saveButton}
+                disabled={isSaving}
+                style={[styles.saveButton, isSaving && { opacity: 0.5 }]}
                 onPress={handleAddReminder}
               >
                 <Save color="#FFF" size={20} />
@@ -678,13 +687,14 @@ export default function RemindersScreen() {
         visible={showEditModal}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowEditModal(false)}
+        onRequestClose={() => { if (!isSaving) setShowEditModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Erinnerung bearbeiten</Text>
               <TouchableOpacity 
+                disabled={isSaving}
                 style={styles.closeButton}
                 onPress={() => {
                   setShowEditModal(false);
@@ -695,11 +705,15 @@ export default function RemindersScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalContent}>
+            <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
+              {isSaving ? <Text accessibilityLiveRegion="polite" style={{ padding: 12 }}>Speichert …</Text> : null}
+
+              <VehicleSelect vehicles={vehicles} value={currentReminder?.vehicleId} onChange={vehicleId => setCurrentReminder({...currentReminder, vehicleId})} disabled={isSaving} />
               {currentReminder && renderReminderForm(true)}
 
               <TouchableOpacity 
-                style={styles.saveButton}
+                disabled={isSaving}
+                style={[styles.saveButton, isSaving && { opacity: 0.5 }]}
                 onPress={handleEditReminder}
               >
                 <Save color="#FFF" size={20} />
@@ -715,7 +729,7 @@ export default function RemindersScreen() {
         visible={showDeleteModal}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowDeleteModal(false)}
+        onRequestClose={() => { if (!isSaving) setShowDeleteModal(false); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.confirmModalContainer}>

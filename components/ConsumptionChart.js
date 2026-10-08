@@ -5,23 +5,12 @@ import { LineChart } from 'react-native-chart-kit';
 const { width } = Dimensions.get('window');
 
 const ConsumptionChart = ({ data }) => {
-  // Default data if none provided
-  const chartData = data || {
-    labels: ["Jun", "Jul", "Aug", "Sep", "Okt", "Nov"],
-    datasets: [
-      {
-        data: [9.8, 10.2, 9.5, 9.7, 10.1, 9.6],
-        color: (opacity = 1) => `rgba(139, 69, 19, ${opacity})`, // Brown color
-        strokeWidth: 2
-      }
-    ],
-    legend: ["L/100km"]
-  };
-
+  const chartData = data;
+  if (!chartData?.labels?.length || !chartData?.datasets?.[0]?.data?.length) return <Text>Keine Daten im gewählten Zeitraum.</Text>;
   // Check if we're on web platform
   if (Platform.OS === 'web') {
     // Simple fallback for web to avoid chart library issues
-    const maxValue = Math.max(...chartData.datasets[0].data);
+    const maxValue = Math.max(1, ...chartData.datasets[0].data);
     
     return (
       <View style={styles.webFallbackContainer}>

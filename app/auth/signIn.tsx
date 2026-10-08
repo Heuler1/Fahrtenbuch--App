@@ -38,7 +38,7 @@ export default function SignInScreen() {
       }
 
       if (data.user) {
-        console.log('Sign in successful');
+
         router.replace('/(tabs)');
       }
     } catch (error) {
@@ -69,17 +69,6 @@ export default function SignInScreen() {
 
     try {
       setIsLoading(true);
-      console.log('Starting sign up process...');
-      console.log('Email:', formData.email);
-
-      // Test connection first
-      try {
-        const { data: testData, error: testError } = await supabase.auth.getSession();
-        console.log('Connection test:', { testData, testError });
-      } catch (testErr) {
-        console.error('Connection test failed:', testErr);
-      }
-
       // Try to sign up
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
@@ -91,8 +80,6 @@ export default function SignInScreen() {
         }
       });
 
-      console.log('Sign up response:', { data, error });
-
       if (error) {
         console.error('Sign up error:', error);
         setError(`Registrierung fehlgeschlagen: ${error.message || error.toString()}`);
@@ -100,8 +87,6 @@ export default function SignInScreen() {
       }
 
       if (data?.user) {
-        console.log('Sign up successful, user:', data.user);
-        console.log('Session:', data.session);
 
         // Create user profile in database
         try {
@@ -116,8 +101,6 @@ export default function SignInScreen() {
 
           if (profileError) {
             console.error('Error creating user profile:', profileError);
-          } else {
-            console.log('Profile created successfully');
           }
         } catch (profileError) {
           console.error('Error creating user profile:', profileError);
@@ -126,16 +109,12 @@ export default function SignInScreen() {
         // Check if email confirmation is required
         if (data.session) {
           // User is signed in immediately
-          console.log('User signed in, redirecting to tabs...');
+
           router.replace('/(tabs)');
         } else {
           // Email confirmation required
-          setError('Konto erstellt! Bitte bestätigen Sie Ihre E-Mail-Adresse. (Für diese Demo können Sie sich direkt anmelden)');
-          // For demo purposes, try to sign in anyway
-          setTimeout(() => {
-            setIsSignUp(false);
-            setError('');
-          }, 3000);
+          setError('Konto erstellt! Bitte bestätigen Sie Ihre E-Mail-Adresse und melden Sie sich anschließend an.');
+
         }
       }
     } catch (error) {

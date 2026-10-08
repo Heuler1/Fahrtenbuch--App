@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Dimensions, Modal, TextInput, Alert, Platform } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Car, Calendar, Fuel, PenTool as Tool, Bell, ChartBar as BarChart3, Plus, BookOpen, Settings, X, Save, Camera, User } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { getCurrentVehicle, getReminders, getUserProfile, setUserProfile } from '../../utils/storage';
+import { getVehicles, getReminders, getUserProfile, setUserProfile } from '../../utils/storage';
+
+import { supabase } from '../../utils/supabaseClient';
+import { loadDashboardVehicle, saveDashboardVehicle } from '../../utils/dashboardVehicle';
+import { showMessage, errorMessage } from '../../utils/showMessage';
 
 const { width } = Dimensions.get('window');
 
@@ -12,6 +16,11 @@ export default function Dashboard() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  const [vehicles, setVehicles] = useState([]);
+  const [selectionUserId, setSelectionUserId] = useState(null);
+  const [showVehicleModal, setShowVehicleModal] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(false);
+  const switching = useRef(false);
   const [currentVehicle, setCurrentVehicle] = useState(null);
   const [upcomingReminders, setUpcomingReminders] = useState([]);
   const [userProfile, setUserProfileState] = useState({
@@ -23,18 +32,22 @@ export default function Dashboard() {
 
   const loadData = async () => {
     try {
-      const [vehicle, reminders, profile] = await Promise.all([
-        getCurrentVehicle(),
+      const [loadedVehicles, reminders, profile, auth] = await Promise.all([
+        getVehicles(),
         getReminders(),
         getUserProfile(),
+        supabase.auth.getUser(),
       ]);
 
-      if (vehicle) {
-        setCurrentVehicle(vehicle);
-      }
+      if (auth.error) throw auth.error;
+      const userId = auth.data.user?.id;
+      const vehicle = await loadDashboardVehicle(loadedVehicles, userId);
+      setVehicles(loadedVehicles);
+      setSelectionUserId(userId);
+      setCurrentVehicle(vehicle);
 
-      if (reminders && reminders.length > 0) {
-        const sorted = [...reminders].sort((a, b) => {
+      {
+        const sorted = [...(reminders || [])].sort((a, b) => {
           const dateA = (a.date || '').split('.').reverse().join('');
           const dateB = (b.date || '').split('.').reverse().join('');
           return dateA.localeCompare(dateB);
@@ -57,15 +70,27 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   useFocusEffect(
     useCallback(() => {
       loadData();
     }, [])
   );
+
+  const selectVehicle = async (vehicle) => {
+    if (switching.current) return;
+    switching.current = true;
+    setIsSwitching(true);
+    try {
+      await saveDashboardVehicle(vehicle.id, selectionUserId);
+      setCurrentVehicle(vehicle);
+      setShowVehicleModal(false);
+    } catch (error) {
+      showMessage('Fahrzeugwechsel fehlgeschlagen', errorMessage(error));
+    } finally {
+      switching.current = false;
+      setIsSwitching(false);
+    }
+  };
 
   const navigateToSection = (section) => {
     router.push(`/(tabs)/${section}`);
@@ -210,7 +235,7 @@ export default function Dashboard() {
 
             <TouchableOpacity
               style={styles.changeVehicleButton}
-              onPress={() => navigateToSection('vehicles')}
+              onPress={() => setShowVehicleModal(true)}
             >
               <Car color="#8B4513" size={16} />
               <Text style={styles.changeVehicleText}>Fahrzeug wechseln</Text>
@@ -300,6 +325,34 @@ export default function Dashboard() {
           <Text style={styles.addReminderText}>Erinnerung hinzufügen</Text>
         </TouchableOpacity>
       </View>
+
+      <Modal visible={showVehicleModal} transparent animationType="slide"
+        onRequestClose={() => { if (!isSwitching) setShowVehicleModal(false); }}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Fahrzeug wechseln</Text>
+              <TouchableOpacity accessibilityLabel="Schließen" disabled={isSwitching}
+                onPress={() => setShowVehicleModal(false)} style={styles.closeButton}>
+                <X color="#333" size={24} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalContent}>
+              {vehicles.map(vehicle => (
+                <TouchableOpacity key={vehicle.id} disabled={isSwitching}
+                  accessibilityRole="button" accessibilityState={{ selected: vehicle.id === currentVehicle?.id, disabled: isSwitching }}
+                  onPress={() => selectVehicle(vehicle)}
+                  style={{ padding: 16, marginBottom: 12, borderRadius: 8, backgroundColor: vehicle.id === currentVehicle?.id ? '#F5E8DD' : '#F5F5F5' }}>
+                  <Text style={styles.vehicleName}>{vehicle.name}</Text>
+                  <Text>{vehicle.licensePlate || vehicle.year || ''}</Text>
+                  {vehicle.id === currentVehicle?.id && <Text>Ausgewählt</Text>}
+                </TouchableOpacity>
+              ))}
+              {isSwitching && <Text>Fahrzeug wird gewechselt …</Text>}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showProfileModal}
@@ -780,3 +833,4 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   }
 });
+
