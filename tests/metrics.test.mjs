@@ -60,3 +60,14 @@ test('Trip timeline permits adjacent trips and separate vehicles, rejects overla
   assert.equal(m.validateTripTimeline({...a,id:'two',vehicleId:'b'},[a]).distance,100);
   assert.throws(()=>m.validateTripTimeline({...a,id:'two',date:'02.10.2026',startMileage:0,endMileage:100},[a]));
 });
+
+test('new trip starts at the latest known odometer of its own vehicle', () => {
+  const a={id:'a',mileage:1000}, b={id:'b',mileage:50000};
+  const trips=[{vehicleId:'a',date:'01.10.2026',endMileage:1200},{vehicleId:'b',date:'02.10.2026',endMileage:50500},{vehicleId:null,date:'02.10.2026',endMileage:99999}];
+  const readings=[{vehicleId:'a',date:'03.10.2026',mileage:1250},{vehicleId:'a',date:'09.10.2026',mileage:2000}];
+  assert.equal(m.lastKnownMileage(a,trips,readings,now),'1250');
+  assert.equal(m.lastKnownMileage(b,trips,readings,now),'50500');
+  assert.equal(m.lastKnownMileage({id:'new',mileage:0},trips,readings,now),'0');
+  assert.equal(m.lastKnownMileage(null,trips,readings,now),'');
+  assert.equal(m.lastKnownMileage(a,[...trips,{vehicleId:'a',date:'08.10.2026',endMileage:1300}],readings,now),'1300');
+});

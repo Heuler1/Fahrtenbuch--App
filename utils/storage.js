@@ -30,3 +30,5 @@ export const deleteMaintenanceEntry = SupabaseStorage.deleteMaintenanceEntry;
 export const addReminder = async e => normalizeReminder(await SupabaseStorage.addReminder(e));
 export const updateReminder = async e => normalizeReminder(await SupabaseStorage.updateReminder(e));
 export const deleteReminder = SupabaseStorage.deleteReminder;
+
+export const getOdometerReadings = SupabaseStorage.getOdometerReadings;

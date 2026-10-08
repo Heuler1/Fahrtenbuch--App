@@ -120,3 +120,12 @@ export function validateTripTimeline(entry, others) {
   }
   return current;
 }
+
+export function lastKnownMileage(vehicle, trips = [], readings = [], now = new Date()) {
+  if (!vehicle?.id) return '';
+  const values = [vehicle.mileage,
+    ...trips.filter(e => e.vehicleId === vehicle.id && inPeriod(e.date, 'all', now)).map(e => e.endMileage),
+    ...readings.filter(e => e.vehicleId === vehicle.id && inPeriod(e.date, 'all', now)).map(e => e.mileage)
+  ].filter(value => value !== null && value !== undefined && value !== '' && Number.isSafeInteger(Number(value)) && Number(value) >= 0).map(Number);
+  return values.length ? String(Math.max(...values)) : '';
+}

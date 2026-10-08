@@ -1,13 +1,13 @@
-import { validTrip, tripDistance, validateTripTimeline } from '../../utils/metrics';
+import { validTrip, tripDistance, validateTripTimeline, lastKnownMileage } from '../../utils/metrics';
 import { useFocusEffect } from 'expo-router';
 import VehicleSelect from '../../components/VehicleSelect';
 import { useRecordVehicles } from '../../hooks/useRecordVehicles';
 import { showMessage, errorMessage } from '../../utils/showMessage';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, FlatList, Modal, Platform, Alert } from 'react-native';
 import { Plus, MapPin, Calendar, Navigation, Clock, Tag, ChevronRight, Search, X, Save, Trash2, CreditCard as Edit, Download } from 'lucide-react-native';
 import { exportTripsPdf } from '../../utils/pdfExport';
-import { getTrips, addTrip, updateTrip, deleteTrip, getTodayFormatted, sortDatesDESC } from '../../utils/storage';
+import { getOdometerReadings, getTrips, addTrip, updateTrip, deleteTrip, getTodayFormatted, sortDatesDESC } from '../../utils/storage';
 
 export default function LogbookScreen() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,16 +31,32 @@ export default function LogbookScreen() {
   });
   
   const [allTrips, setTripsState] = useState([]);
+  const [odometerReadings, setOdometerReadings] = useState([]);
+  const startMileageEdited = useRef(false);
+  const openedVehicle = useRef(null);
   const { vehicles, scope, setScope, newRecordVehicleId, setNewVehicleId, matchesVehicle, vehicleName, isSaving, runMutation } = useRecordVehicles();
   const trips = allTrips.filter(matchesVehicle).map(trip => ({ ...trip, distance: tripDistance(trip) }));
   const currentVehicle = vehicles.find(vehicle => vehicle.id === scope) || null;
+
+  useEffect(() => {
+    if (!showAddModal) { openedVehicle.current = null; return; }
+    if (openedVehicle.current !== newRecordVehicleId) {
+      openedVehicle.current = newRecordVehicleId;
+      startMileageEdited.current = false;
+    }
+    if (!startMileageEdited.current) {
+      const selected = vehicles.find(vehicle => vehicle.id === newRecordVehicleId);
+      setNewTrip(previous => ({ ...previous, startMileage: lastKnownMileage(selected, allTrips, odometerReadings) }));
+    }
+  }, [showAddModal, newRecordVehicleId, vehicles, allTrips, odometerReadings]);
 
   // Load trips from storage
   useFocusEffect(React.useCallback(() => {
     const loadTrips = async () => {
       try {
         setIsLoading(true);
-        const loadedTrips = await getTrips();
+        const [loadedTrips, readings] = await Promise.all([getTrips(), getOdometerReadings()]);
+        setOdometerReadings(readings);
         if (loadedTrips) {
           const sortedTrips = loadedTrips.sort((a, b) => {
             const dateA = a.date.split('.').reverse().join('');
@@ -304,7 +320,10 @@ export default function LogbookScreen() {
     const tripData = isEdit ? currentTrip : newTrip;
     const setTripData = isEdit 
       ? (data) => setCurrentTrip({...currentTrip, ...data}) 
-      : (data) => setNewTrip({...newTrip, ...data});
+      : (data) => {
+          if ('startMileage' in data) startMileageEdited.current = true;
+          setNewTrip(previous => ({ ...previous, ...data }));
+        };
 
     return (
       <>

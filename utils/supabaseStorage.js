@@ -307,3 +307,12 @@ const mapReminder = e => ({ title: e.title, date: e.date, type: e.type, descript
 export const addReminder = e => createRecord('reminders', mapReminder(e));
 export const updateReminder = e => updateRecord('reminders', e, mapReminder(e));
 export const deleteReminder = e => deleteRecord('reminders', e);
+
+// Lightweight readings only: do not download receipt photos to prefill a trip.
+export async function getOdometerReadings() {
+  const userId = await getCurrentUserId();
+  const results = await Promise.all(['fuel_entries', 'maintenance_entries'].map(table =>
+    supabase.from(table).select('vehicle_id,date,mileage').eq('user_id', userId)));
+  for (const result of results) if (result.error) throw result.error;
+  return results.flatMap(result => (result.data || []).map(row => ({ vehicleId: row.vehicle_id, date: row.date, mileage: row.mileage })));
+}
