@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert, Switch, Modal, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert, Switch, Modal, Platform, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Save, Trash2, CreditCard as Edit, Camera, X, Plus, Car } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { getVehicles, updateVehicle, deleteVehicle } from '../../utils/storage';
 import { showMessage, errorMessage } from '../../utils/showMessage';
-import { toSupabaseVehicle } from '../../utils/vehicleUtils';
+import { vehicleChanges } from '../../utils/vehicleUtils';
 
 export default function VehicleScreen() {
   const router = useRouter();
@@ -15,6 +15,8 @@ export default function VehicleScreen() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [vehicle, setVehicle] = useState(null);
+  const originalVehicle = useRef(null);
+  const [saveFeedback, setSaveFeedback] = useState(null);
   const writeInProgress = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -28,6 +30,7 @@ export default function VehicleScreen() {
           const foundVehicle = vehicles.find(v => String(v.id) === String(params.id));
 
           if (foundVehicle) {
+            originalVehicle.current = foundVehicle;
             setVehicle(foundVehicle);
           } else {
             showMessage('Fehler', 'Fahrzeug nicht gefunden.');
@@ -53,15 +56,22 @@ export default function VehicleScreen() {
     if (writeInProgress.current) return;
     writeInProgress.current = true;
     setIsSaving(true);
+    setSaveFeedback(null);
     try {
-      const supabaseUpdates = toSupabaseVehicle(vehicle);
-      const saved = await updateVehicle(vehicle.id, supabaseUpdates, vehicle.updatedAt);
+      const supabaseUpdates = vehicleChanges(vehicle, originalVehicle.current);
+      if (!Object.keys(supabaseUpdates).length) {
+        setSaveFeedback({ error: false, text: 'Keine Änderungen vorhanden.' });
+        setIsEditing(false);
+        return;
+      }
+      const saved = await updateVehicle(vehicle.id, supabaseUpdates, vehicle.updatedAt, originalVehicle.current);
+      originalVehicle.current = saved;
       setVehicle(saved);
-      showMessage('Gespeichert', 'Fahrzeugdaten wurden erfolgreich gespeichert.');
+      setSaveFeedback({ error: false, text: 'Fahrzeugdaten gespeichert.' });
       setIsEditing(false);
     } catch (error) {
       console.error('Error saving vehicle:', error);
-      showMessage('Fehler', errorMessage(error));
+      setSaveFeedback({ error: true, text: errorMessage(error) });
     } finally {
       writeInProgress.current = false;
       setIsSaving(false);
@@ -276,16 +286,23 @@ export default function VehicleScreen() {
         <Text style={styles.title}>Fahrzeugdetails</Text>
         {isEditing ? (
           <TouchableOpacity disabled={isSaving} onPress={handleSave} style={styles.actionButton}>
-            <Save color="#8B4513" size={24} />
+            {isSaving ? <ActivityIndicator color="#8B4513" /> : <Save color="#8B4513" size={24} />}
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.actionButton}>
+          <TouchableOpacity onPress={() => { setSaveFeedback(null); setIsEditing(true); }} style={styles.actionButton}>
             <Edit color="#8B4513" size={24} />
           </TouchableOpacity>
         )}
       </View>
 
-      <ScrollView style={styles.scrollView}>
+      {(isSaving || saveFeedback) && (
+        <View accessibilityLiveRegion="polite" style={{ padding: 12, backgroundColor: saveFeedback?.error ? '#FDE8E8' : '#EDF7ED' }}>
+          <Text style={{ color: saveFeedback?.error ? '#9B1C1C' : '#245C2A' }}>
+            {isSaving ? 'Wird gespeichert … Bitte kurz warten.' : saveFeedback?.text}
+          </Text>
+        </View>
+      )}
+      <ScrollView style={styles.scrollView} pointerEvents={isSaving ? 'none' : 'auto'}>
         <View style={styles.imageContainer}>
           {vehicle.image ? (
             <Image source={{ uri: vehicle.image }} style={styles.vehicleImage} resizeMode="cover" />

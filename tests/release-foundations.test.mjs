@@ -246,3 +246,27 @@ test('dashboard selection reports persistence errors and rejects missing account
   await assert.rejects(selection.saveDashboardVehicle('second', 'alice'), /storage unavailable/);
   await assert.rejects(selection.saveDashboardVehicle('second', null), /anmelden/);
 });
+
+test('vehicle patch omits unchanged photos and includes intentional clearing', async () => {
+  const { vehicleChanges } = await load('../utils/vehicleUtils.js');
+  const original = { name: 'Oldtimer', mileage: 120, image: 'data:image/jpeg;base64,large', additionalImages: ['photo'], notes: 'old' };
+  assert.equal(JSON.stringify(vehicleChanges({ ...original, mileage: 121 }, original)), '{"mileage":121}');
+  const cleared = vehicleChanges({ ...original, image: '', additionalImages: [], notes: '' }, original);
+  assert.equal(cleared.image_url, '');
+  assert.equal(cleared.additional_images.length, 0);
+  assert.equal(cleared.notes, '');
+  assert.equal(Object.keys(vehicleChanges(original, original)).length, 0);
+});
+test('compact vehicle save retains unchanged fields and adopts server version', async () => {
+  let args;
+  const storage = await load('../utils/storage.js', { './supabaseStorage': {
+    updateVehicle: async (...received) => { args = received; return { id: 'v1', updated_at: 'new-version' }; },
+  } });
+  const original = { id: 'v1', name: 'Oldtimer', mileage: 120, image: 'large-photo', updatedAt: 'old-version' };
+  const saved = await storage.updateVehicle('v1', { mileage: 121 }, 'old-version', original);
+  assert.equal(args[3], 'id,updated_at');
+  assert.equal(saved.name, 'Oldtimer');
+  assert.equal(saved.image, 'large-photo');
+  assert.equal(saved.mileage, 121);
+  assert.equal(saved.updatedAt, 'new-version');
+});

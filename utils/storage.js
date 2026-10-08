@@ -1,5 +1,5 @@
 import * as SupabaseStorage from './supabaseStorage';
-import { normalizeVehicles, normalizeFuelEntry, normalizeTrip, normalizeMaintenanceEntry, normalizeReminder } from './vehicleUtils';
+import { toSupabaseVehicle, normalizeVehicles, normalizeFuelEntry, normalizeTrip, normalizeMaintenanceEntry, normalizeReminder } from './vehicleUtils';
 
 // Cloud-only until an account-scoped offline queue and conflict handling exist.
 // Errors must reach the UI; never acknowledge an unpersisted local fallback.
@@ -13,7 +13,10 @@ export const getFuelEntries = async () => (await SupabaseStorage.getFuelEntries(
 export const getTrips = async () => (await SupabaseStorage.getTrips()).map(normalizeTrip).filter(entry => entry !== null);
 export const getMaintenanceEntries = async () => (await SupabaseStorage.getMaintenanceEntries()).map(normalizeMaintenanceEntry).filter(entry => entry !== null);
 export const getReminders = async () => (await SupabaseStorage.getReminders()).map(normalizeReminder).filter(entry => entry !== null);
-export const updateVehicle = async (id, updates, expectedUpdatedAt) => normalizeVehicles([await SupabaseStorage.updateVehicle(id, updates, expectedUpdatedAt)])[0];
+export const updateVehicle = async (id, updates, expectedUpdatedAt, original) => {
+  const raw = await SupabaseStorage.updateVehicle(id, updates, expectedUpdatedAt, original ? 'id,updated_at' : '*');
+  return normalizeVehicles([original ? { ...toSupabaseVehicle(original), ...updates, ...raw } : raw])[0];
+};
 export const { deleteVehicle, getUserProfile, setUserProfile, generateId, sortDatesDESC, sortDatesASC, getTodayFormatted } = SupabaseStorage;
 export const addFuelEntry = async e => normalizeFuelEntry(await SupabaseStorage.addFuelEntry(e));
 export const updateFuelEntry = async e => normalizeFuelEntry(await SupabaseStorage.updateFuelEntry(e));

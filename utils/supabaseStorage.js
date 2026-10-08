@@ -93,7 +93,7 @@ export const addVehicle = async (vehicle) => {
   }
 };
 
-export const updateVehicle = async (vehicleId, updates, expectedUpdatedAt) => {
+export const updateVehicle = async (vehicleId, updates, expectedUpdatedAt, returning = '*') => {
   try {
     const userId = await getCurrentUserId();
     requireVersion({ id: vehicleId, updatedAt: expectedUpdatedAt });
@@ -103,7 +103,7 @@ export const updateVehicle = async (vehicleId, updates, expectedUpdatedAt) => {
       .eq('id', vehicleId)
       .eq('user_id', userId)
       .eq('updated_at', expectedUpdatedAt)
-      .select();
+      .select(returning);
 
     if (error) throw error;
     if (!data?.length) throw new Error(CONFLICT_MESSAGE);

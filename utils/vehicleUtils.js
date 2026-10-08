@@ -152,3 +152,11 @@ export const normalizeReminder = (raw) => {
   };
 };
 
+
+// Compare database fields so unchanged photos and documents are not uploaded again.
+export const vehicleChanges = (vehicle, original) => {
+  const current = toSupabaseVehicle(vehicle);
+  const previous = toSupabaseVehicle(original);
+  return Object.fromEntries(Object.entries(current).filter(([key, value]) =>
+    JSON.stringify(value) !== JSON.stringify(previous[key])));
+};
