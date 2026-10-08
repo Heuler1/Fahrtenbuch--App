@@ -218,3 +218,31 @@ test('vehicle edit and deletion reject stale versions without touching siblings'
   await storage.deleteVehicle('v1', saved.updated_at);
   assert.deepEqual(db.vehicles.map(row => row.id), ['v2', 'foreign']);
 });
+
+test('dashboard can switch between two active vehicles and remembers choice per account', async () => {
+  const values = new Map();
+  const selection = await load('../utils/dashboardVehicle.js', {
+    '@react-native-async-storage/async-storage': { default: {
+      getItem: async key => values.get(key) || null,
+      setItem: async (key, value) => values.set(key, value),
+    } },
+  });
+  const vehicles = [{ id: 'first', isActive: true }, { id: 'second', isActive: true }];
+  assert.equal((await selection.loadDashboardVehicle(vehicles, 'alice')).id, 'first');
+  await selection.saveDashboardVehicle('second', 'alice');
+  assert.equal((await selection.loadDashboardVehicle(vehicles, 'alice')).id, 'second');
+  assert.equal((await selection.loadDashboardVehicle(vehicles, 'bob')).id, 'first');
+  assert.equal((await selection.loadDashboardVehicle([vehicles[0]], 'alice')).id, 'first');
+  assert.equal(await selection.loadDashboardVehicle([], 'alice'), null);
+  assert.ok(vehicles.every(vehicle => vehicle.isActive));
+});
+test('dashboard selection reports persistence errors and rejects missing account', async () => {
+  const selection = await load('../utils/dashboardVehicle.js', {
+    '@react-native-async-storage/async-storage': { default: {
+      getItem: async () => null,
+      setItem: async () => { throw new Error('storage unavailable'); },
+    } },
+  });
+  await assert.rejects(selection.saveDashboardVehicle('second', 'alice'), /storage unavailable/);
+  await assert.rejects(selection.saveDashboardVehicle('second', null), /anmelden/);
+});
