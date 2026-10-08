@@ -1,0 +1,40 @@
+import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const { PGlite } = await import(process.env.PGLITE_MODULE || '@electric-sql/pglite');
+const db = new PGlite();
+const userA='00000000-0000-4000-8000-000000000001', userB='00000000-0000-4000-8000-000000000002';
+const carA='10000000-0000-4000-8000-000000000001', carB='10000000-0000-4000-8000-000000000002';
+await db.exec(`CREATE SCHEMA auth;
+CREATE ROLE authenticated;
+CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+GRANT USAGE ON SCHEMA public,auth TO authenticated;
+CREATE TABLE public.vehicles(id uuid PRIMARY KEY,user_id uuid NOT NULL);
+ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY own_vehicles ON public.vehicles TO authenticated USING (user_id=auth.uid()) WITH CHECK (user_id=auth.uid());
+INSERT INTO public.vehicles VALUES ('${carA}','${userA}'),('${carB}','${userB}');`);
+const tables=['trips','fuel_entries','maintenance_entries','reminders'];
+for(const table of tables) await db.exec(`CREATE TABLE public.${table}(id text PRIMARY KEY,user_id uuid NOT NULL,vehicle_id uuid REFERENCES public.vehicles(id));
+ALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY;
+CREATE POLICY own_rows ON public.${table} TO authenticated USING (user_id=auth.uid()) WITH CHECK(user_id=auth.uid());
+INSERT INTO public.${table} VALUES ('legacy','${userA}',null),('other','${userB}','${carB}');`);
+await db.exec('GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO authenticated;');
+const migration=await fs.readFile(new URL('../supabase/migrations/20261008050000_vehicle_owner_checks.sql',import.meta.url),'utf8');
+await db.exec(migration);
+await db.exec(migration); // safe rerun
+await db.exec(`SET ROLE authenticated; SET request.jwt.claim.sub='${userA}';`);
+for(const table of tables){
+  assert.equal((await db.query(`SELECT * FROM ${table}`)).rows.length,1);
+  await db.exec(`INSERT INTO ${table} VALUES ('own','${userA}','${carA}');`);
+  await assert.rejects(db.exec(`INSERT INTO ${table} VALUES ('foreign','${userA}','${carB}');`),/row-level security/);
+  await assert.rejects(db.exec(`INSERT INTO ${table} VALUES ('null','${userA}',null);`),/row-level security/);
+  await assert.rejects(db.exec(`UPDATE ${table} SET vehicle_id='${carB}' WHERE id='own';`),/row-level security/);
+  await assert.rejects(db.exec(`UPDATE ${table} SET user_id='${userB}' WHERE id='own';`),/row-level security/);
+  await db.exec(`UPDATE ${table} SET vehicle_id='${carA}' WHERE id='legacy';`);
+  await db.exec(`DELETE FROM ${table} WHERE id='other';`);
+  await db.exec(`DELETE FROM ${table} WHERE id='own';`);
+  assert.equal((await db.query(`SELECT * FROM ${table}`)).rows[0].vehicle_id,carA);
+}
+await db.exec(`SET request.jwt.claim.sub='${userB}';`);
+for(const table of tables) assert.equal((await db.query(`SELECT * FROM ${table}`)).rows[0].id,'other');
+await db.close();
+console.log('Database security: four tables passed ownership, legacy, delete and policy rerun checks.');

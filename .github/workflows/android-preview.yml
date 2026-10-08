@@ -1,0 +1,47 @@
+name: Android test APK
+on:
+  push:
+    branches: [playstore-release]
+    paths: ['app/**', 'components/**', 'hooks/**', 'utils/**', 'assets/**', 'package*.json', 'app.json', 'app.config.js', '.github/workflows/android-preview.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-test-apk
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://taembulnsbdbwtdzktgm.supabase.co
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_VtErSA_TB-09chsQZWoBsQ_e4q4ahYr
+      EXPO_NO_TELEMETRY: '1'
+      ANDROID_PREVIEW: 'true'
+      NODE_ENV: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: npm ci --include=dev
+      - run: npm test
+      - run: npm run test:db
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --no-install
+      - name: Build standalone test APK (test signing only)
+        working-directory: android
+        run: ./gradlew :app:assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a
+      - name: Upload installable test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fahrtenbuch-android-test
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30

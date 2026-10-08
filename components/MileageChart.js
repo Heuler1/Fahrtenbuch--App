@@ -5,25 +5,14 @@ import { LineChart } from 'react-native-chart-kit';
 const { width } = Dimensions.get('window');
 
 const MileageChart = ({ data }) => {
-  // Default data if none provided
-  const chartData = data || {
-    labels: ["Jan", "Feb", "Mar", "Apr", "Mai", "Jun"],
-    datasets: [
-      {
-        data: [76800, 77200, 77500, 77890, 78167, 78432],
-        color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`, // Blue color
-        strokeWidth: 2
-      }
-    ],
-    legend: ["Kilometer"]
-  };
-
+  const chartData = data;
+  if (!chartData?.labels?.length || !chartData?.datasets?.[0]?.data?.length) return <Text>Keine Daten im gewählten Zeitraum.</Text>;
   // Check if we're on web platform
   if (Platform.OS === 'web') {
     // Simple fallback for web to avoid chart library issues
     const minValue = Math.min(...chartData.datasets[0].data);
-    const maxValue = Math.max(...chartData.datasets[0].data);
-    const range = maxValue - minValue;
+    const maxValue = Math.max(1, ...chartData.datasets[0].data);
+    const range = maxValue - minValue || 1;
     
     return (
       <View style={styles.webFallbackContainer}>

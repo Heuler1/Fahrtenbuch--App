@@ -270,3 +270,12 @@ test('compact vehicle save retains unchanged fields and adopts server version', 
   assert.equal(saved.mileage, 121);
   assert.equal(saved.updatedAt, 'new-version');
 });
+
+test('empty statistics PDF renders unavailable ratios without inventing costs', async () => {
+  const { generateStatisticsHtml } = await load('../utils/pdfHtml.js');
+  const html = generateStatisticsHtml({ vehicleName: 'Test', period: 'Gesamt', totalDistance: 0, avgConsumption: null, maintenanceCosts: 0, fuelCosts: 0, totalCosts: 0, costPerKm: null, totalTrips: 0, totalFuelEntries: 0, totalMaintenanceEntries: 0 });
+  assert.ok(html.includes('– L/100km'));
+  assert.ok(html.includes('– €/km'));
+  assert.ok(html.includes('ohne Fixkosten'));
+  assert.ok(!html.includes('NaN'));
+});

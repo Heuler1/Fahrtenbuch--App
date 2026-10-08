@@ -1,3 +1,4 @@
+import { validMaintenance } from '../../utils/metrics';
 import { useFocusEffect } from 'expo-router';
 import VehicleSelect from '../../components/VehicleSelect';
 import { useRecordVehicles } from '../../hooks/useRecordVehicles';
@@ -63,19 +64,10 @@ export default function MaintenanceScreen() {
       return;
     }
 
-    // Validate numeric inputs
-    const cost = parseFloat(newMaintenanceEntry.cost);
-    const mileage = parseInt(newMaintenanceEntry.mileage);
-    
-    if (isNaN(cost) || cost < 0) {
-      showMessage('Fehler', 'Bitte geben Sie gültige Kosten ein.');
-      return;
-    }
-    
-    if (isNaN(mileage) || mileage < 0) {
-      showMessage('Fehler', 'Bitte geben Sie einen gültigen Kilometerstand ein.');
-      return;
-    }
+    let parsed;
+    try { parsed = validMaintenance(newMaintenanceEntry); }
+    catch (error) { showMessage('Fehler', errorMessage(error)); return; }
+    const { cost, mileage } = parsed;
     const maintenanceEntryToAdd = {
       vehicleId: newRecordVehicleId,
       date: newMaintenanceEntry.date,
@@ -108,13 +100,9 @@ export default function MaintenanceScreen() {
       return;
     }
 
-    const updatedEntry = {
-      ...currentMaintenanceEntry,
-      cost: typeof currentMaintenanceEntry.cost === 'string' ? parseFloat(currentMaintenanceEntry.cost) : currentMaintenanceEntry.cost,
-      mileage: typeof currentMaintenanceEntry.mileage === 'string' ? parseInt(currentMaintenanceEntry.mileage) : currentMaintenanceEntry.mileage,
-      workshop: currentMaintenanceEntry.workshop || 'Keine Angabe',
-      description: currentMaintenanceEntry.description || 'Keine Beschreibung'
-    };
+    let updatedEntry;
+    try { updatedEntry = validMaintenance(currentMaintenanceEntry); }
+    catch (error) { showMessage('Fehler', errorMessage(error)); return; }
 
     try {
       const saved = await updateMaintenanceEntry(updatedEntry);

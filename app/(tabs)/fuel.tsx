@@ -1,3 +1,4 @@
+import { validFuel, fuelMetrics, averageConsumption, dateValue } from '../../utils/metrics';
 import { useFocusEffect } from 'expo-router';
 import VehicleSelect from '../../components/VehicleSelect';
 import { useRecordVehicles } from '../../hooks/useRecordVehicles';
@@ -29,7 +30,7 @@ export default function FuelScreen() {
   
   const [allFuelEntries, setFuelEntriesState] = useState([]);
   const { vehicles, scope, setScope, newRecordVehicleId, setNewVehicleId, matchesVehicle, vehicleName, isSaving, runMutation } = useRecordVehicles();
-  const fuelEntries = allFuelEntries.filter(matchesVehicle);
+  const fuelEntries = fuelMetrics(allFuelEntries).filter(matchesVehicle);
 
   // Load fuel entries from storage
   useFocusEffect(React.useCallback(() => {
@@ -64,38 +65,8 @@ export default function FuelScreen() {
       return;
     }
 
-    // Validate numeric inputs
-    const amount = parseFloat(newFuelEntry.amount);
-    const price = parseFloat(newFuelEntry.price);
-    const mileage = parseInt(newFuelEntry.mileage);
-    
-    if (isNaN(amount) || amount <= 0) {
-      showMessage('Fehler', 'Bitte geben Sie eine gültige Menge ein.');
-      return;
-    }
-    
-    if (isNaN(price) || price <= 0) {
-      showMessage('Fehler', 'Bitte geben Sie einen gültigen Preis ein.');
-      return;
-    }
-    
-    if (isNaN(mileage) || mileage <= 0) {
-      showMessage('Fehler', 'Bitte geben Sie einen gültigen Kilometerstand ein.');
-      return;
-    }
     try {
-      const totalCost = amount * price;
-      
-      // Find previous entry to calculate consumption
-      const sortedEntries = allFuelEntries.filter(entry => entry.vehicleId === newRecordVehicleId && entry.mileage < mileage).sort((a, b) => b.mileage - a.mileage);
-      const previousEntry = sortedEntries[0];
-      
-      let consumption = 0;
-      if (previousEntry) {
-        const distance = parseInt(newFuelEntry.mileage) - previousEntry.mileage;
-        consumption = distance > 0 ? (amount / distance) * 100 : 0;
-      }
-
+      const { amount, price, mileage, totalCost } = validFuel(newFuelEntry);
       const fuelEntryToAdd = {
         vehicleId: newRecordVehicleId,
         date: newFuelEntry.date,
@@ -104,8 +75,8 @@ export default function FuelScreen() {
         amount: amount,
         price: price,
         totalCost: totalCost,
-        mileage: parseInt(newFuelEntry.mileage),
-        consumption: consumption,
+        mileage: mileage,
+        consumption: 0,
         receiptImage: newFuelEntry.receiptImage
       };
 
@@ -130,30 +101,14 @@ export default function FuelScreen() {
     }
 
     try {
-      // Calculate total cost
-      const amount = typeof currentFuelEntry.amount === 'string' ? parseFloat(currentFuelEntry.amount) : currentFuelEntry.amount;
-      const price = typeof currentFuelEntry.price === 'string' ? parseFloat(currentFuelEntry.price) : currentFuelEntry.price;
-      const mileage = typeof currentFuelEntry.mileage === 'string' ? parseInt(currentFuelEntry.mileage) : currentFuelEntry.mileage;
-      const totalCost = amount * price;
-      
-      // Find previous entry to calculate consumption
-      const otherEntries = allFuelEntries.filter(entry => entry.id !== currentFuelEntry.id && entry.vehicleId === currentFuelEntry.vehicleId);
-      const sortedEntries = [...otherEntries].sort((a, b) => b.mileage - a.mileage);
-      const previousEntry = sortedEntries.find(entry => entry.mileage < mileage);
-      
-      let consumption = 0;
-      if (previousEntry) {
-        const distance = mileage - previousEntry.mileage;
-        consumption = distance > 0 ? (amount / distance) * 100 : 0;
-      }
-
+      const { amount, price, mileage, totalCost } = validFuel(currentFuelEntry);
       const updatedEntry = {
         ...currentFuelEntry,
         amount: amount,
         price: price,
         totalCost: totalCost,
         mileage: mileage,
-        consumption: consumption,
+        consumption: 0,
         location: currentFuelEntry.location || 'Keine Angabe'
       };
 
@@ -269,7 +224,7 @@ export default function FuelScreen() {
           
           <View style={styles.fuelInfoItem}>
             <TrendingUp size={18} color="#8B4513" />
-            <Text style={styles.fuelInfoValue}>{(item.consumption || 0).toFixed(1)} L/100km</Text>
+            <Text style={styles.fuelInfoValue}>{(item.consumption === null ? '–' : item.consumption.toFixed(1))} L/100km</Text>
           </View>
         </View>
         
@@ -432,25 +387,9 @@ export default function FuelScreen() {
   // Calculate statistics
   const totalCost = fuelEntries.reduce((sum, entry) => sum + entry.totalCost, 0);
   const totalFuel = fuelEntries.reduce((sum, entry) => sum + entry.amount, 0);
-  const avgConsumption = fuelEntries.length > 0 
-    ? fuelEntries.reduce((sum, entry) => sum + entry.consumption, 0) / fuelEntries.length 
-    : 0;
-
-  // Prepare chart data
-  const consumptionData = {
-    labels: fuelEntries.slice(0, 6).reverse().map(entry => {
-      const dateParts = entry.date.split('.');
-      return dateParts[1] + '/' + dateParts[2].substring(2);
-    }),
-    datasets: [
-      {
-        data: fuelEntries.slice(0, 6).reverse().map(entry => entry.consumption),
-        color: (opacity = 1) => `rgba(139, 69, 19, ${opacity})`, // Brown color
-        strokeWidth: 2
-      }
-    ],
-    legend: ["L/100km"]
-  };
+  const avgConsumption = averageConsumption(fuelEntries);
+  const consumptionEntries = fuelEntries.filter(entry => entry.consumption !== null).sort((a,b) => dateValue(a.date) - dateValue(b.date)).slice(-6);
+  const consumptionData = { labels: consumptionEntries.map(entry => entry.date), datasets: [{ data: consumptionEntries.map(entry => Math.round(entry.consumption * 100) / 100) }] };
 
   if (isLoading) {
     return (
@@ -462,6 +401,7 @@ export default function FuelScreen() {
 
   return (
     <View style={styles.container}>
+      <Text style={{ padding: 12, color: '#666' }}>Verbrauch ist ein Schätzwert zwischen Tankstopps desselben Fahrzeugs. Nur bei vergleichbarem Tankfüllstand aussagekräftig; der erste Tankstopp hat keinen Verbrauchswert.</Text>
       <VehicleSelect vehicles={vehicles} value={scope} onChange={setScope} filter disabled={isSaving} />
       {isSaving ? <Text accessibilityLiveRegion="polite" style={{ padding: 8 }}>Speichert …</Text> : null}
 
@@ -484,7 +424,7 @@ export default function FuelScreen() {
         </View>
         
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>{avgConsumption.toFixed(1)}</Text>
+          <Text style={styles.statValue}>{(avgConsumption === null ? '–' : avgConsumption.toFixed(1))}</Text>
           <Text style={styles.statLabel}>Ø L/100km</Text>
         </View>
       </View>

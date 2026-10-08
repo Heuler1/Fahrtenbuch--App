@@ -5,31 +5,8 @@ import { PieChart } from 'react-native-chart-kit';
 const { width } = Dimensions.get('window');
 
 const CategoryPieChart = ({ data }) => {
-  // Default data if none provided
-  const chartData = data || [
-    {
-      name: 'Freizeit',
-      population: 65,
-      color: '#4CAF50',
-      legendFontColor: '#333',
-      legendFontSize: 12,
-    },
-    {
-      name: 'Geschäftlich',
-      population: 20,
-      color: '#2196F3',
-      legendFontColor: '#333',
-      legendFontSize: 12,
-    },
-    {
-      name: 'Oldtimertreffen',
-      population: 15,
-      color: '#FF9800',
-      legendFontColor: '#333',
-      legendFontSize: 12,
-    },
-  ];
-
+  const chartData = data || [];
+  if (!chartData.length) return <Text>Keine Daten im gewählten Zeitraum.</Text>;
   // Check if we're on web platform
   if (Platform.OS === 'web') {
     // Simple fallback for web to avoid chart library issues

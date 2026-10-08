@@ -1,3 +1,5 @@
+import { validateVehicleForm } from '../../utils/vehicleForm';
+import { inputNumber } from '../../utils/metrics';
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert, Switch, Modal, Platform, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -58,7 +60,10 @@ export default function VehicleScreen() {
     setIsSaving(true);
     setSaveFeedback(null);
     try {
-      const supabaseUpdates = vehicleChanges(vehicle, originalVehicle.current);
+      const checked = validateVehicleForm(vehicle);
+      checked.purchasePrice = inputNumber(vehicle.purchasePrice || 0, 'Kaufpreis');
+      checked.insurance = { ...vehicle.insurance, cost: inputNumber(vehicle.insurance?.cost || 0, 'Versicherungskosten') };
+      const supabaseUpdates = vehicleChanges(checked, originalVehicle.current);
       if (!Object.keys(supabaseUpdates).length) {
         setSaveFeedback({ error: false, text: 'Keine Änderungen vorhanden.' });
         setIsEditing(false);

@@ -5,16 +5,8 @@ import { BarChart } from 'react-native-chart-kit';
 const { width } = Dimensions.get('window');
 
 const CostChart = ({ data, title }) => {
-  // Default data if none provided
-  const chartData = data || {
-    labels: ["Jan", "Feb", "Mar", "Apr", "Mai", "Jun"],
-    datasets: [
-      {
-        data: [450, 680, 520, 390, 750, 620],
-      }
-    ]
-  };
-
+  const chartData = data;
+  if (!chartData?.labels?.length || !chartData?.datasets?.[0]?.data?.length) return <Text>Keine Daten im gewählten Zeitraum.</Text>;
   // Check if we're on web platform
   if (Platform.OS === 'web') {
     // Simple fallback for web to avoid chart library issues
@@ -32,7 +24,7 @@ const CostChart = ({ data, title }) => {
                   style={[
                     styles.webBar, 
                     { 
-                      width: `${(chartData.datasets[0].data[index] / Math.max(...chartData.datasets[0].data)) * 100}%`,
+                      width: `${(chartData.datasets[0].data[index] / Math.max(1, ...chartData.datasets[0].data)) * 100}%`,
                       backgroundColor: '#8B4513' 
                     }
                   ]} 

@@ -105,6 +105,7 @@ export const generateStatisticsHtml = (data) => {
       </style>
     </head>
     <body>
+      <p>Kosten: erfasster Kraftstoff und Wartungen, ohne Fixkosten. Verbrauch: Schätzwert bei vergleichbarem Tankfüllstand.</p>
       <div class="header">
         <div class="title">Fahrzeug-Statistiken</div>
         <div class="subtitle">${escapeHtml(vehicleName)} - ${escapeHtml(period)}</div>
@@ -118,8 +119,8 @@ export const generateStatisticsHtml = (data) => {
             <div class="stat-value">${number(totalDistance)} km</div>
           </div>
           <div class="stat-item">
-            <div class="stat-label">Durchschnittlicher Verbrauch</div>
-            <div class="stat-value">${avgConsumption.toFixed(1)} L/100km</div>
+            <div class="stat-label">Verbrauch (Schätzwert)</div>
+            <div class="stat-value">${avgConsumption == null ? '–' : avgConsumption.toFixed(1)} L/100km</div>
           </div>
           <div class="stat-item">
             <div class="stat-label">Anzahl Fahrten</div>
@@ -149,7 +150,7 @@ export const generateStatisticsHtml = (data) => {
           </div>
           <div class="stat-item">
             <div class="stat-label">Kosten pro Kilometer</div>
-            <div class="stat-value">${costPerKm.toFixed(2)} €/km</div>
+            <div class="stat-value">${costPerKm == null ? '–' : costPerKm.toFixed(2)} €/km</div>
           </div>
         </div>
       </div>

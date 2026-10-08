@@ -25,6 +25,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run test:db
       - run: npx expo export --platform web --max-workers 2
       - run: node scripts/prepare-pages.cjs
       - uses: actions/upload-pages-artifact@v3

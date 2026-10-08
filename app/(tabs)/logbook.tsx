@@ -1,3 +1,4 @@
+import { validTrip, tripDistance, validateTripTimeline } from '../../utils/metrics';
 import { useFocusEffect } from 'expo-router';
 import VehicleSelect from '../../components/VehicleSelect';
 import { useRecordVehicles } from '../../hooks/useRecordVehicles';
@@ -31,7 +32,7 @@ export default function LogbookScreen() {
   
   const [allTrips, setTripsState] = useState([]);
   const { vehicles, scope, setScope, newRecordVehicleId, setNewVehicleId, matchesVehicle, vehicleName, isSaving, runMutation } = useRecordVehicles();
-  const trips = allTrips.filter(matchesVehicle);
+  const trips = allTrips.filter(matchesVehicle).map(trip => ({ ...trip, distance: tripDistance(trip) }));
   const currentVehicle = vehicles.find(vehicle => vehicle.id === scope) || null;
 
   // Load trips from storage
@@ -99,37 +100,17 @@ export default function LogbookScreen() {
       return;
     }
 
-    // Validate numeric inputs
-    const startMileage = parseInt(newTrip.startMileage);
-    const endMileage = parseInt(newTrip.endMileage);
-    
-    if (isNaN(startMileage) || startMileage < 0) {
-      showMessage('Fehler', 'Bitte geben Sie einen gültigen Start-Kilometerstand ein.');
-      return;
-    }
-    
-    if (isNaN(endMileage) || endMileage < 0) {
-      showMessage('Fehler', 'Bitte geben Sie einen gültigen End-Kilometerstand ein.');
-      return;
-    }
-    
-    if (endMileage <= startMileage) {
-      showMessage('Fehler', 'Der End-Kilometerstand muss höher als der Start-Kilometerstand sein.');
-      return;
-    }
     try {
-      // Calculate distance
-      const distance = newTrip.distance ? parseInt(newTrip.distance) : (endMileage - startMileage);
-
+      const validated = validateTripTimeline({ ...newTrip, vehicleId: newRecordVehicleId }, allTrips);
       const tripToAdd = {
         vehicleId: newRecordVehicleId,
         date: newTrip.date,
         start: newTrip.start,
         destination: newTrip.destination,
-        distance: distance,
+        distance: validated.distance,
         category: newTrip.category,
-        startMileage: parseInt(newTrip.startMileage),
-        endMileage: parseInt(newTrip.endMileage),
+        startMileage: validated.startMileage,
+        endMileage: validated.endMileage,
         notes: newTrip.notes,
         weather: newTrip.weather || 'Keine Angabe'
       };
@@ -155,16 +136,12 @@ export default function LogbookScreen() {
     }
 
     try {
-      // Calculate distance if needed
-      const distance = currentTrip.distance ? 
-                      (typeof currentTrip.distance === 'string' ? parseInt(currentTrip.distance) : currentTrip.distance) : 
-                      (parseInt(currentTrip.endMileage) - parseInt(currentTrip.startMileage));
-
+      const validated = validateTripTimeline(currentTrip, allTrips);
       const updatedTrip = {
         ...currentTrip,
-        distance: distance,
-        startMileage: parseInt(currentTrip.startMileage),
-        endMileage: parseInt(currentTrip.endMileage),
+        distance: validated.distance,
+        startMileage: validated.startMileage,
+        endMileage: validated.endMileage,
         weather: currentTrip.weather || 'Keine Angabe'
       };
 

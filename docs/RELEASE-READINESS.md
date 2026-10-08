@@ -1,6 +1,6 @@
 # Android / iOS: technische Vorbereitung
 
-Stand: 07.10.2026. Dieses Paket ist eine erste Korrekturrunde, keine Store-Freigabe.
+Stand: 08.10.2026. Dieses Paket ist eine erste Korrekturrunde, keine Store-Freigabe.
 
 ## In diesem Paket
 
@@ -16,7 +16,7 @@ Stand: 07.10.2026. Dieses Paket ist eine erste Korrekturrunde, keine Store-Freig
 
 ## Prüfung
 
-- `npm test`: 23 Tests für PDF-Daten, HTML-Escaping, native PDF-Aufrufe, Fehlerbehandlung und Auth-Speicher.
+- `npm test`: 36 Tests für PDF-Daten, HTML-Escaping, native PDF-Aufrufe, Fehlerbehandlung und Auth-Speicher.
 - `npx expo export --platform all`: erfolgreich für Android, iOS und Web mit Test-Konfigurationswerten. Dies prüft Bundling, nicht native Installation oder die produktive Datenbank.
 - `npm run typecheck`: noch nicht erfolgreich. Bereits der unveränderte Ausgangsstand hat 353 TypeScript-Diagnosen, vor allem untypisierte React-Zustände. Die Rückgabetyp-Inferenz der Speicherfassade legt zusätzliche untypisierte Zustände offen; die Zahl nach weiteren Änderungen wurde nicht als Release-Gate verwendet. Die Typisierung muss vor Release aufgeräumt werden.
 - Kein Android-/iOS-Gerätetest, kein signiertes AAB/IPA, kein Live-Datenbanktest.
@@ -49,3 +49,14 @@ Stand: 07.10.2026. Dieses Paket ist eine erste Korrekturrunde, keine Store-Freig
 - Konflikte verändern die Formulareingaben nicht. Zum Laden der aktuellen Daten die Ansicht wechseln und zurückkehren; nicht blind denselben alten Stand erneut speichern.
 - Ohne Fahrzeugzuordnung bleibt sichtbar. Es gibt keine automatische Zuordnung anhand des ersten Fahrzeugs.
 - Netzwerkfehler direkt nach serverseitig erfolgreichem Anlegen können einen unklaren Bestätigungszustand erzeugen: vor erneutem Anlegen neu laden. Eine serverseitige Idempotenz für wiederholte Anlageversuche ist noch offen.
+
+## Paket vom 08.10.2026
+
+- Statistik enthält ausschließlich erfasste Kraftstoff- und Wartungskosten. Keine Mindestkosten pro km, erfundenen Fixkosten, Demo-Kategorien oder Demo-Diagramme.
+- Ein gemeinsamer Rechenkern filtert nach Fahrzeug und Zeitraum; zukünftige/ungültige Datumswerte fließen nicht ein. Zeitraum bedeutet rollierender Monat / drei Monate / zwölf Monate bis heute.
+- Fahrtstrecke wird aus Kilometerständen berechnet. Überschneidungen und zeitlich rückläufige Fahrten desselben Fahrzeugs werden beim Eingeben abgewiesen. Das ersetzt keine serverseitige Audit-Historie.
+- Verbrauch wird nach Änderungen und Löschungen aus benachbarten Tankstopps pro Fahrzeug neu abgeleitet, nach Distanz gewichtet und ausdrücklich als Schätzung ausgewiesen. Voll-/Teilbetankungen sind noch nicht als eigenes Feld erfasst.
+- Kilometerverläufe werden nur für ein einzelnes Fahrzeug gezeigt. Kosten pro km beziehen sich auf erfasste Fahrten, nicht auf den absoluten Tachostand.
+- Datenbankmigration für Fahrzeugbesitzerprüfung mit PGlite getestet. In Supabase noch NICHT aktiviert; Anleitung in STORE-PREPARATION.md.
+- Expo-52-Paketversionen angeglichen; Android-Test-APK-Workflow mit eigener Test-Paketkennung hinzugefügt. Kein Upgrade auf die für den Store notwendige aktuelle SDK-Basis.
+- Store-Texte, Testfälle, technisches Dateninventar und Verkaufsmodellvergleich vorbereitet. Betreiberangaben, Produktionssignatur, Löschfunktion, natives Gerätetesting und finales Bezahlmodell bleiben offen.
